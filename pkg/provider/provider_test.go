@@ -8,11 +8,11 @@ import (
 	daytona_provider "github.com/daytonaio/daytona/pkg/provider"
 	"github.com/daytonaio/daytona/pkg/workspace"
 
-	"github.com/daytonaio/daytona-provider-sample/pkg/provider"
-	provider_types "github.com/daytonaio/daytona-provider-sample/pkg/types"
+	"github.com/daytonaio/daytona-provider-fly/pkg/provider"
+	provider_types "github.com/daytonaio/daytona-provider-fly/pkg/types"
 )
 
-var sampleProvider = &provider.SampleProvider{}
+var sampleProvider = &provider.FlyProvider{}
 var targetOptions = &provider_types.TargetOptions{
 	RequiredString: "default-required-string",
 }

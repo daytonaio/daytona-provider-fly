@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	hc_plugin "github.com/hashicorp/go-plugin"
 
-	p "github.com/daytonaio/daytona-provider-sample/pkg/provider"
+	p "github.com/daytonaio/daytona-provider-fly/pkg/provider"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 	hc_plugin.Serve(&hc_plugin.ServeConfig{
 		HandshakeConfig: manager.ProviderHandshakeConfig,
 		Plugins: map[string]hc_plugin.Plugin{
-			"provider-sample": &provider.ProviderPlugin{Impl: &p.SampleProvider{}},
+			"fly-provider": &provider.ProviderPlugin{Impl: &p.FlyProvider{}},
 		},
 		Logger: logger,
 	})

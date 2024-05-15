@@ -1,4 +1,4 @@
-module github.com/daytonaio/daytona-provider-sample
+module github.com/daytonaio/daytona-provider-fly
 
 go 1.22.2
 

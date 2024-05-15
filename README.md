@@ -1,26 +1,23 @@
 <div align="center">
 
 [![License](https://img.shields.io/badge/License-MIT-blue)](#license)
-[![Go Report Card](https://goreportcard.com/badge/github.com/daytonaio/daytona-provider-sample)](https://goreportcard.com/report/github.com/daytonaio/daytona-provider-sample)
-[![Issues - daytona](https://img.shields.io/github/issues/daytonaio/daytona-provider-sample)](https://github.com/daytonaio/daytona-provider-sample/issues)
-![GitHub Release](https://img.shields.io/github/v/release/daytonaio/daytona-provider-sample)
+[![Go Report Card](https://goreportcard.com/badge/github.com/daytonaio/daytona-provider-fly)](https://goreportcard.com/report/github.com/daytonaio/daytona-provider-fly)
+[![Issues - daytona](https://img.shields.io/github/issues/daytonaio/daytona-fly-provider)](https://github.com/daytonaio/daytona-provider-fly/issues)
+![GitHub Release](https://img.shields.io/github/v/release/daytonaio/daytona-fly-provider)
 
 </div>
 
 
-<h1 align="center">Daytona Provider Sample</h1>
+<h1 align="center">Daytona Fly Provider</h1>
 <div align="center">
-This repository is the home of the <a href="https://github.com/daytonaio/daytona">Daytona</a> Provider Sample.
+This repository is the home of the <a href="https://github.com/daytonaio/daytona">Daytona</a> Fly Provider.
 </div>
 </br>
 
-> [!NOTE]
-> After you create a repository, you can run `./hack/replace-name.sh` to easily configure the repo based on the name of your provider. Feel free to remove the `hack` folder after that.
-
 <p align="center">
-  <a href="https://github.com/daytonaio/daytona-provider-sample/issues/new?assignees=&labels=bug&projects=&template=bug_report.md&title=%F0%9F%90%9B+Bug+Report%3A+">Report Bug</a>
+  <a href="https://github.com/daytonaio/daytona-provider-fly/issues/new?assignees=&labels=bug&projects=&template=bug_report.md&title=%F0%9F%90%9B+Bug+Report%3A+">Report Bug</a>
     ·
-  <a href="https://github.com/daytonaio/daytona-provider-sample/issues/new?assignees=&labels=enhancement&projects=&template=feature_request.md&title=%F0%9F%9A%80+Feature%3A+">Request Feature</a>
+  <a href="https://github.com/daytonaio/daytona-provider-fly/issues/new?assignees=&labels=enhancement&projects=&template=feature_request.md&title=%F0%9F%9A%80+Feature%3A+">Request Feature</a>
     ·
   <a href="https://join.slack.com/t/daytonacommunity/shared_invite/zt-273yohksh-Q5YSB5V7tnQzX2RoTARr7Q">Join Our Slack</a>
     ·

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"io"
 
-	internal "github.com/daytonaio/daytona-provider-sample/internal"
-	log_writers "github.com/daytonaio/daytona-provider-sample/internal/log"
-	provider_types "github.com/daytonaio/daytona-provider-sample/pkg/types"
+	internal "github.com/daytonaio/daytona-provider-fly/internal"
+	log_writers "github.com/daytonaio/daytona-provider-fly/internal/log"
+	provider_types "github.com/daytonaio/daytona-provider-fly/pkg/types"
 
 	"github.com/daytonaio/daytona/pkg/logger"
 	"github.com/daytonaio/daytona/pkg/provider"
@@ -14,7 +14,7 @@ import (
 	"github.com/daytonaio/daytona/pkg/workspace"
 )
 
-type SampleProvider struct {
+type FlyProvider struct {
 	BasePath          *string
 	ServerDownloadUrl *string
 	ServerVersion     *string
@@ -25,7 +25,7 @@ type SampleProvider struct {
 	OwnProperty       string
 }
 
-func (p *SampleProvider) Initialize(req provider.InitializeProviderRequest) (*util.Empty, error) {
+func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.Empty, error) {
 	p.OwnProperty = "my-own-property"
 
 	p.BasePath = &req.BasePath
@@ -39,18 +39,18 @@ func (p *SampleProvider) Initialize(req provider.InitializeProviderRequest) (*ut
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) GetInfo() (provider.ProviderInfo, error) {
+func (p FlyProvider) GetInfo() (provider.ProviderInfo, error) {
 	return provider.ProviderInfo{
-		Name:    "provider-sample",
+		Name:    "fly-provider",
 		Version: internal.Version,
 	}, nil
 }
 
-func (p SampleProvider) GetTargetManifest() (*provider.ProviderTargetManifest, error) {
+func (p FlyProvider) GetTargetManifest() (*provider.ProviderTargetManifest, error) {
 	return provider_types.GetTargetManifest(), nil
 }
 
-func (p SampleProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) {
+func (p FlyProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) {
 	info, err := p.GetInfo()
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (p SampleProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) 
 	return &defaultTargets, nil
 }
 
-func (p SampleProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p FlyProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
 	logWriter := io.MultiWriter(&log_writers.InfoLogWriter{})
 	if p.LogsDir != nil {
 		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
@@ -80,19 +80,19 @@ func (p SampleProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest)
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) StartWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p FlyProvider) StartWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) StopWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p FlyProvider) StopWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) DestroyWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p FlyProvider) DestroyWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) (*workspace.WorkspaceInfo, error) {
+func (p FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) (*workspace.WorkspaceInfo, error) {
 	providerMetadata, err := p.getWorkspaceMetadata(workspaceReq)
 	if err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func (p SampleProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest
 	return workspaceInfo, nil
 }
 
-func (p SampleProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+func (p FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
 	logWriter := io.MultiWriter(&log_writers.InfoLogWriter{})
 	if p.LogsDir != nil {
 		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
@@ -133,19 +133,19 @@ func (p SampleProvider) CreateProject(projectReq *provider.ProjectRequest) (*uti
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) StartProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+func (p FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) StopProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+func (p FlyProvider) StopProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) DestroyProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+func (p FlyProvider) DestroyProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p SampleProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
+func (p FlyProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
 	providerMetadata := provider_types.ProjectMetadata{
 		Property: projectReq.Project.Name,
 	}
@@ -165,7 +165,7 @@ func (p SampleProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*wo
 	return projectInfo, nil
 }
 
-func (p SampleProvider) getWorkspaceMetadata(workspaceReq *provider.WorkspaceRequest) (string, error) {
+func (p FlyProvider) getWorkspaceMetadata(workspaceReq *provider.WorkspaceRequest) (string, error) {
 	metadata := provider_types.WorkspaceMetadata{
 		Property: workspaceReq.Workspace.Id,
 	}

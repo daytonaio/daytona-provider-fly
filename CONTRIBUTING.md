@@ -4,11 +4,11 @@ The team at Daytona welcomes contributions from the community. There are many wa
 
 ## Provide Feedback
 
-You might find things that can be improved while you are using the Daytona Provider Sample. You can help by [submitting an issue](https://github.com/daytonaio/daytona-provider-sample/issues/new) when:
+You might find things that can be improved while you are using the Daytona Fly Provider. You can help by [submitting an issue](https://github.com/daytonaio/daytona-provider-fly/issues/new) when:
 
-* When the Provider Sample crashes or you encounter a bug that can only be resolved by restarting Daytona.
+* When the Fly Provider crashes or you encounter a bug that can only be resolved by restarting Daytona.
 * An error occurs that is unrecoverable, causes workspace integrity problems or loss, or generally prevents you from using a workspace.
-* A new feature or an enhancement to an existing feature will improve the utility or usability of the Daytona Provider Sample.
+* A new feature or an enhancement to an existing feature will improve the utility or usability of the Daytona Fly Provider.
 
 Before creating a new issue, please confirm that an existing issue doesn't already exist.
 
@@ -22,7 +22,7 @@ You can engage with our community by:
 * Authoring new dev containers and sharing examples
 
 ## Contributing Code
-You can contribute to the Daytona Provider Sample by:
+You can contribute to the Daytona Fly Provider by:
 
 * Enhancing current functionality
 * Fixing bugs
@@ -30,7 +30,7 @@ You can contribute to the Daytona Provider Sample by:
 
 Before starting your contribution, especially for core features, we encourage you to reach out to us on [Slack](https://join.slack.com/t/daytonacommunity/shared_invite/zt-273yohksh-Q5YSB5V7tnQzX2RoTARr7Q). This allows us to ensure that your proposed feature aligns with the project's roadmap and goals. Developers are the key to making Daytona the best tool it can be, and we value input from the community.
 
-We look forward to working with you to improve Daytona and the Provider Sample, and make development environments as easy as possible for developers everywhere.
+We look forward to working with you to improve Daytona and the Fly Provider, and make development environments as easy as possible for developers everywhere.
 
 ### Steps to Contribute Code
 
@@ -39,7 +39,7 @@ Follow the following steps to ensure your contribution goes smoothly.
 1. Read and follow the steps outlined in the [Daytona Contributing Policy](README.md#contributing).
 2. Configure your development environment by either following the guide below.
 3. [Fork](https://help.github.com/articles/working-with-forks/) the GitHub Repository allowing you to make the changes in your own copy of the repository.
-4. Create a [GitHub issue](https://github.com/daytonaio/daytona-provider-sample/issues) if one doesn't exist already.
+4. Create a [GitHub issue](https://github.com/daytonaio/daytona-provider-fly/issues) if one doesn't exist already.
 5. [Prepare your changes](/PREPARING_YOUR_CHANGES.md) and ensure your commits are descriptive. The document contains an optional commit template, if desired.
 6. Ensure that you sign off on all your commits to comply with the DCO v1.1. We have more details in [Prepare your changes](/PREPARING_YOUR_CHANGES.md).
 7. Create a pull request on GitHub. If you're new to GitHub, read about [pull requests](https://help.github.com/articles/about-pull-requests/). You are welcome to submit your pull request for commentary or review before it is complete by creating a [draft pull request](https://help.github.com/en/articles/about-pull-requests#draft-pull-requests). Please include specific questions or items you'd like feedback on.

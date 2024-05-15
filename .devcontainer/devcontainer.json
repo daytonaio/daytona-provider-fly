@@ -1,5 +1,5 @@
 {
-	"name": "Daytona Provider Sample",
+	"name": "Daytona Fly Provider",
 	"image": "ghcr.io/daytonaio/go-devcontainer:main",
 	"containerEnv": {
 		"LOG_LEVEL": "debug"
