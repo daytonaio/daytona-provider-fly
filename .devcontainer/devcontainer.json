@@ -1,0 +1,11 @@
+{
+	"name": "Daytona Provider Sample",
+	"image": "ghcr.io/daytonaio/go-devcontainer:main",
+	"containerEnv": {
+		"LOG_LEVEL": "debug"
+	},
+	"postCreateCommand": {
+		"tidy": "go mod tidy"
+	},
+	"remoteUser": "daytona"
+}
