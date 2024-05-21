@@ -24,25 +24,21 @@ This repository is the home of the <a href="https://github.com/daytonaio/daytona
   <a href="https://x.com/Daytonaio">X</a>
 </p>
 
-> [!TIP]
-> Write a description of your Provider here. 
+The Fly Provider allows Daytona to create workspace projects on Fly VMs known as Fly Machines.
 
 ## Target Options
 
-| Property                	| Type     	| Optional 	| DefaultValue                	| InputMasked 	| DisabledPredicate 	|
-|-------------------------	|----------	|----------	|-----------------------------	|-------------	|-------------------	|
-| Required String         	| String   	| false    	| default-required-string     	| false       	|                   	|
-| Optional String           | String   	| true     	|                             	| true         	|                   	|
-| Optional Int             	| Int      	| true     	|                             	| false       	|                   	|
-| FilePath                	| FilePath 	| true     	| ~/.ssh                        | false       	| ^default-target$    |
+| Property             | Type     	    | Optional 	  | DefaultValue  | InputMasked 	   | DisabledPredicate 	 |
+|----------------------|---------------|-------------|---------------|-----------------|---------------------|
+| AuthToken       	    | String   	    | false    	  | 	             | true       	    | 	                   |
+| OrgSlug              | String   	    | false     	 | 	             | false         	 | 	                   |
+| Region             	 | String      	 | true     	  | 	             | false       	   | 	                   |
+| DiskSize             | String 	      | true     	  | 10            | false       	   |                     |
+| Size              	  | String 	      | true     	  | shared-cpu-4x | false       	   |                     |
 
 ### Default Targets
 
-#### Local
-| Property        	| Value                       	|
-|-----------------	|-----------------------------	|
-| Required String 	| default-required-string      	|
-
+The Fly Provider has no default targets. Before using the provider you must set the target using the `daytona target set` command.
 
 ## Code of Conduct
 

@@ -2,16 +2,19 @@ package provider
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
+	"time"
 
-	internal "github.com/daytonaio/daytona-provider-fly/internal"
-	log_writers "github.com/daytonaio/daytona-provider-fly/internal/log"
-	provider_types "github.com/daytonaio/daytona-provider-fly/pkg/types"
-
+	"github.com/daytonaio/daytona-provider-fly/internal"
+	logwriters "github.com/daytonaio/daytona-provider-fly/internal/log"
+	flyutil "github.com/daytonaio/daytona-provider-fly/pkg/provider/util"
+	"github.com/daytonaio/daytona-provider-fly/pkg/types"
 	"github.com/daytonaio/daytona/pkg/logger"
 	"github.com/daytonaio/daytona/pkg/provider"
 	"github.com/daytonaio/daytona/pkg/provider/util"
 	"github.com/daytonaio/daytona/pkg/workspace"
+	"github.com/superfly/fly-go"
 )
 
 type FlyProvider struct {
@@ -19,15 +22,13 @@ type FlyProvider struct {
 	ServerDownloadUrl *string
 	ServerVersion     *string
 	ServerUrl         *string
+	NetworkKey        *string
 	ServerApiUrl      *string
 	LogsDir           *string
-	NetworkKey        *string
-	OwnProperty       string
 }
 
+// Initialize initializes the provider with the given configuration.
 func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.Empty, error) {
-	p.OwnProperty = "my-own-property"
-
 	p.BasePath = &req.BasePath
 	p.ServerDownloadUrl = &req.ServerDownloadUrl
 	p.ServerVersion = &req.ServerVersion
@@ -39,71 +40,44 @@ func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.
 	return new(util.Empty), nil
 }
 
-func (p FlyProvider) GetInfo() (provider.ProviderInfo, error) {
+// GetInfo returns the provider information.
+func (p *FlyProvider) GetInfo() (provider.ProviderInfo, error) {
 	return provider.ProviderInfo{
 		Name:    "fly-provider",
 		Version: internal.Version,
 	}, nil
 }
 
-func (p FlyProvider) GetTargetManifest() (*provider.ProviderTargetManifest, error) {
-	return provider_types.GetTargetManifest(), nil
+func (p *FlyProvider) GetTargetManifest() (*provider.ProviderTargetManifest, error) {
+	return types.GetTargetManifest(), nil
 }
 
-func (p FlyProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) {
-	info, err := p.GetInfo()
-	if err != nil {
-		return nil, err
-	}
-
-	defaultTargets := []provider.ProviderTarget{
-		{
-			Name:         "default-target",
-			ProviderInfo: info,
-			Options:      "{\n\t\"Required String\": \"default-required-string\"\n}",
-		},
-	}
-	return &defaultTargets, nil
+func (p *FlyProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) {
+	return new([]provider.ProviderTarget), nil
 }
 
-func (p FlyProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
-	logWriter := io.MultiWriter(&log_writers.InfoLogWriter{})
-	if p.LogsDir != nil {
-		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
-		wsLogWriter := loggerFactory.CreateWorkspaceLogger(workspaceReq.Workspace.Id)
-		logWriter = io.MultiWriter(&log_writers.InfoLogWriter{}, wsLogWriter)
-		defer wsLogWriter.Close()
-	}
-
-	logWriter.Write([]byte("Workspace created\n"))
-
+func (p *FlyProvider) CreateWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p FlyProvider) StartWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p *FlyProvider) StartWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p FlyProvider) StopWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p *FlyProvider) StopWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p FlyProvider) DestroyWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p *FlyProvider) DestroyWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
 	return new(util.Empty), nil
 }
 
-func (p FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) (*workspace.WorkspaceInfo, error) {
-	providerMetadata, err := p.getWorkspaceMetadata(workspaceReq)
-	if err != nil {
-		return nil, err
-	}
-
+func (p *FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) (*workspace.WorkspaceInfo, error) {
 	workspaceInfo := &workspace.WorkspaceInfo{
-		Name:             workspaceReq.Workspace.Name,
-		ProviderMetadata: providerMetadata,
+		Name: workspaceReq.Workspace.Name,
 	}
 
-	projectInfos := []*workspace.ProjectInfo{}
+	var projectInfos []*workspace.ProjectInfo
 	for _, project := range workspaceReq.Workspace.Projects {
 		projectInfo, err := p.GetProjectInfo(&provider.ProjectRequest{
 			TargetOptions: workspaceReq.TargetOptions,
@@ -119,61 +93,168 @@ func (p FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) (
 	return workspaceInfo, nil
 }
 
-func (p FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	logWriter := io.MultiWriter(&log_writers.InfoLogWriter{})
-	if p.LogsDir != nil {
-		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
-		projectLogWriter := loggerFactory.CreateProjectLogger(projectReq.Project.WorkspaceId, projectReq.Project.Name)
-		logWriter = io.MultiWriter(&log_writers.InfoLogWriter{}, projectLogWriter)
-		defer projectLogWriter.Close()
+func (p *FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+	if p.ServerDownloadUrl == nil {
+		return nil, errors.New("serverDownloadUrl not set. Did you forget to call Initialize")
+	}
+	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+
+	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
 	}
 
+	initScript := util.GetProjectStartScript(*p.ServerDownloadUrl, projectReq.Project.ApiKey)
+	machine, err := flyutil.CreateMachine(projectReq.Project, targetOptions, initScript)
+	if err != nil {
+		logWriter.Write([]byte("Failed to create machine: " + err.Error() + "\n"))
+		return nil, err
+	}
 	logWriter.Write([]byte("Project created\n"))
 
-	return new(util.Empty), nil
-}
-
-func (p FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	return new(util.Empty), nil
-}
-
-func (p FlyProvider) StopProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	return new(util.Empty), nil
-}
-
-func (p FlyProvider) DestroyProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	return new(util.Empty), nil
-}
-
-func (p FlyProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
-	providerMetadata := provider_types.ProjectMetadata{
-		Property: projectReq.Project.Name,
+	if err := checkMachineReady(projectReq, targetOptions); err != nil {
+		logWriter.Write([]byte("Failed to check machine status: " + err.Error() + "\n"))
+		return nil, err
 	}
 
-	metadataString, err := json.Marshal(providerMetadata)
+	go func() {
+		if err := flyutil.GetMachineLogs(projectReq.Project, targetOptions, machine.ID, logWriter); err != nil {
+			logWriter.Write([]byte(err.Error()))
+			defer cleanupFunc()
+		}
+	}()
+
+	return new(util.Empty), nil
+}
+
+func (p *FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	if err := flyutil.StartMachine(projectReq.Project, targetOptions); err != nil {
+		logWriter.Write([]byte("Failed to start machine: " + err.Error() + "\n"))
+		return nil, err
+	}
+	logWriter.Write([]byte("Project started.\n"))
+
+	return new(util.Empty), nil
+}
+
+func (p *FlyProvider) StopProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	if err := flyutil.StopMachine(projectReq.Project, targetOptions); err != nil {
+		logWriter.Write([]byte("Failed to stop machine: " + err.Error() + "\n"))
+		return nil, err
+	}
+	logWriter.Write([]byte("Project stopped.\n"))
+
+	return new(util.Empty), nil
+}
+
+func (p *FlyProvider) DestroyProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	if err := flyutil.DeleteMachine(projectReq.Project, targetOptions); err != nil {
+		logWriter.Write([]byte("Failed to destroy machine: " + err.Error() + "\n"))
+		return nil, err
+	}
+	logWriter.Write([]byte("Project destroyed.\n"))
+
+	return new(util.Empty), nil
+}
+
+func (p *FlyProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
+	return p.getProjectInfo(projectReq)
+}
+
+func (p *FlyProvider) getProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
+	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	machine, err := flyutil.GetMachine(projectReq.Project, targetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to get machine: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	metadata := types.ProjectMetadata{
+		MachineId: machine.ID,
+		VolumeId:  machine.Config.Mounts[0].Volume,
+	}
+
+	jsonMetadata, err := json.Marshal(metadata)
 	if err != nil {
 		return nil, err
 	}
 
-	projectInfo := &workspace.ProjectInfo{
+	return &workspace.ProjectInfo{
 		Name:             projectReq.Project.Name,
-		IsRunning:        true,
-		Created:          "Created at ...",
-		ProviderMetadata: string(metadataString),
-	}
-
-	return projectInfo, nil
+		IsRunning:        machine.State == fly.MachineStateStarted,
+		Created:          machine.CreatedAt,
+		ProviderMetadata: string(jsonMetadata),
+	}, nil
 }
 
-func (p FlyProvider) getWorkspaceMetadata(workspaceReq *provider.WorkspaceRequest) (string, error) {
-	metadata := provider_types.WorkspaceMetadata{
-		Property: workspaceReq.Workspace.Id,
+func (p *FlyProvider) getLogWriter(workspaceId string, projectName string) (io.Writer, func()) {
+	logWriter := io.MultiWriter(&logwriters.InfoLogWriter{})
+	cleanupFunc := func() {}
+
+	if p.LogsDir != nil {
+		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
+		projectLogWriter := loggerFactory.CreateProjectLogger(workspaceId, projectName)
+		logWriter = io.MultiWriter(&logwriters.InfoLogWriter{}, projectLogWriter)
+		cleanupFunc = func() { projectLogWriter.Close() }
 	}
 
-	jsonContent, err := json.Marshal(metadata)
-	if err != nil {
-		return "", err
-	}
+	return logWriter, cleanupFunc
+}
 
-	return string(jsonContent), nil
+// checkMachineReady checks if the machine for the given workspace is ready to use.
+// It polls the status periodically until the machine is ready or a timeout is reached.
+func checkMachineReady(projectReq *provider.ProjectRequest, targetOptions *types.TargetOptions) error {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	end := time.Now().Add(5 * time.Minute)
+
+	for {
+		select {
+		case <-ticker.C:
+			if flyutil.IsMachineReady(projectReq.Project, targetOptions) {
+				return nil
+			}
+		default:
+			if time.Now().After(end) {
+				return errors.New("machine was not ready within 5 minutes")
+			}
+		}
+	}
 }
