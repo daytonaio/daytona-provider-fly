@@ -1,127 +1,112 @@
-package provider_test
+package provider
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
+	"time"
 
+	flyutil "github.com/daytonaio/daytona-provider-fly/pkg/provider/util"
+	"github.com/daytonaio/daytona-provider-fly/pkg/types"
 	"github.com/daytonaio/daytona/pkg/gitprovider"
-	daytona_provider "github.com/daytonaio/daytona/pkg/provider"
+	"github.com/daytonaio/daytona/pkg/provider"
 	"github.com/daytonaio/daytona/pkg/workspace"
-
-	"github.com/daytonaio/daytona-provider-fly/pkg/provider"
-	provider_types "github.com/daytonaio/daytona-provider-fly/pkg/types"
 )
 
-var sampleProvider = &provider.FlyProvider{}
-var targetOptions = &provider_types.TargetOptions{
-	RequiredString: "default-required-string",
-}
-var optionsString string
+var (
+	orgSlug       = os.Getenv("FLY_TEST_ORG_SLUG")
+	authToken     = os.Getenv("FLY_TEST_ACCESS_TOKEN")
+	optionsString string
 
-var project1 = &workspace.Project{
-	Name: "test",
-	Repository: &gitprovider.GitRepository{
-		Id:   "123",
-		Url:  "https://github.com/daytonaio/daytona",
-		Name: "daytona",
-	},
-	WorkspaceId: "123",
-	EnvVars: map[string]string{
-		"DAYTONA_WS_ID":                     "123",
-		"DAYTONA_WS_PROJECT_NAME":           "test",
-		"DAYTONA_WS_PROJECT_REPOSITORY_URL": "https://github.com/daytonaio/daytona",
-		"DAYTONA_SERVER_API_KEY":            "api-key-test",
-		"DAYTONA_SERVER_VERSION":            "latest",
-		"DAYTONA_SERVER_URL":                "http://localhost:3001",
-		"DAYTONA_SERVER_API_URL":            "http://localhost:3000",
-	},
-}
-
-var workspace1 = &workspace.Workspace{
-	Id:     "123",
-	Name:   "test",
-	Target: "local",
-	Projects: []*workspace.Project{
-		project1,
-	},
-}
-
-func TestCreateWorkspace(t *testing.T) {
-	wsReq := &daytona_provider.WorkspaceRequest{
-		TargetOptions: optionsString,
-		Workspace:     workspace1,
+	flyProvider   = &FlyProvider{}
+	targetOptions = &types.TargetOptions{
+		Region:    "lax",
+		Size:      "shared-cpu-4x",
+		DiskSize:  10,
+		OrgSlug:   orgSlug,
+		AuthToken: &authToken,
 	}
 
-	_, err := sampleProvider.CreateWorkspace(wsReq)
-	if err != nil {
-		t.Errorf("Error creating workspace: %s", err)
+	project1 = &workspace.Project{
+		Name: "test",
+		Repository: &gitprovider.GitRepository{
+			Id:   "123",
+			Url:  "https://github.com/daytonaio/daytona",
+			Name: "daytona",
+		},
+		Image:       "daytonaio/workspace-project:latest",
+		WorkspaceId: "123",
 	}
-}
-
-func TestGetWorkspaceInfo(t *testing.T) {
-	wsReq := &daytona_provider.WorkspaceRequest{
-		TargetOptions: optionsString,
-		Workspace:     workspace1,
-	}
-
-	workspaceInfo, err := sampleProvider.GetWorkspaceInfo(wsReq)
-	if err != nil || workspaceInfo == nil {
-		t.Errorf("Error getting workspace info: %s", err)
-	}
-
-	var workspaceMetadata provider_types.WorkspaceMetadata
-	err = json.Unmarshal([]byte(workspaceInfo.ProviderMetadata), &workspaceMetadata)
-	if err != nil {
-		t.Errorf("Error unmarshalling workspace metadata: %s", err)
-	}
-
-	if workspaceMetadata.Property != wsReq.Workspace.Id {
-		t.Errorf("Expected network id %s, got %s", wsReq.Workspace.Id, workspaceMetadata.Property)
-	}
-}
-
-func TestDestroyWorkspace(t *testing.T) {
-	wsReq := &daytona_provider.WorkspaceRequest{
-		TargetOptions: optionsString,
-		Workspace:     workspace1,
-	}
-
-	_, err := sampleProvider.DestroyWorkspace(wsReq)
-	if err != nil {
-		t.Errorf("Error deleting workspace: %s", err)
-	}
-}
+)
 
 func TestCreateProject(t *testing.T) {
-	TestCreateWorkspace(t)
-
-	projectReq := &daytona_provider.ProjectRequest{
+	projectReq := &provider.ProjectRequest{
 		TargetOptions: optionsString,
 		Project:       project1,
 	}
 
-	_, err := sampleProvider.CreateProject(projectReq)
+	_, err := flyProvider.CreateProject(projectReq)
 	if err != nil {
-		t.Errorf("Error creating project: %s", err)
+		t.Fatalf("Error creating project: %s", err)
+	}
+
+	_, err = flyutil.GetMachine(project1, targetOptions)
+	if err != nil {
+		t.Fatalf("Error getting machine: %s", err)
+	}
+}
+
+func TestProjectInfo(t *testing.T) {
+	projectReq := &provider.ProjectRequest{
+		TargetOptions: optionsString,
+		Project:       project1,
+	}
+
+	projectInfo, err := flyProvider.GetProjectInfo(projectReq)
+	if err != nil {
+		t.Fatalf("Error getting workspace info: %s", err)
+	}
+
+	var projectMetadata types.ProjectMetadata
+	err = json.Unmarshal([]byte(projectInfo.ProviderMetadata), &projectMetadata)
+	if err != nil {
+		t.Fatalf("Error unmarshalling project metadata: %s", err)
+	}
+
+	machine, err := flyutil.GetMachine(project1, targetOptions)
+	if err != nil {
+		t.Fatalf("Error getting machine: %s", err)
+	}
+
+	if projectMetadata.MachineId != machine.ID {
+		t.Fatalf("Expected machine id %s, got %s", projectMetadata.MachineId, machine.ID)
+	}
+
+	if projectMetadata.VolumeId != machine.Config.Mounts[0].Volume {
+		t.Fatalf("Expected volume id %s, got %s", projectMetadata.VolumeId, machine.Config.Mounts[0].Volume)
 	}
 }
 
 func TestDestroyProject(t *testing.T) {
-	projectReq := &daytona_provider.ProjectRequest{
+	projectReq := &provider.ProjectRequest{
 		TargetOptions: optionsString,
 		Project:       project1,
 	}
 
-	_, err := sampleProvider.DestroyProject(projectReq)
+	_, err := flyProvider.DestroyProject(projectReq)
 	if err != nil {
-		t.Errorf("Error deleting project: %s", err)
+		t.Fatalf("Error destroying project: %s", err)
 	}
+	time.Sleep(3 * time.Second)
 
-	TestDestroyWorkspace(t)
+	_, err = flyutil.GetMachine(project1, targetOptions)
+	if err == nil {
+		t.Fatalf("Error destroyed project still exists")
+	}
 }
 
 func init() {
-	_, err := sampleProvider.Initialize(daytona_provider.InitializeProviderRequest{
+	_, err := flyProvider.Initialize(provider.InitializeProviderRequest{
 		BasePath:          "/tmp/workspaces",
 		ServerDownloadUrl: "https://download.daytona.io/daytona/install.sh",
 		ServerVersion:     "latest",
@@ -137,6 +122,5 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-
 	optionsString = string(opts)
 }
