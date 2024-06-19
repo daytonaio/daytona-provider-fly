@@ -18,22 +18,26 @@ import (
 )
 
 type FlyProvider struct {
-	BasePath          *string
-	ServerDownloadUrl *string
-	ServerVersion     *string
-	ServerUrl         *string
-	NetworkKey        *string
-	ServerApiUrl      *string
-	LogsDir           *string
+	BasePath           *string
+	DaytonaDownloadUrl *string
+	DaytonaVersion     *string
+	ServerUrl          *string
+	NetworkKey         *string
+	ApiUrl             *string
+	ApiPort            *uint32
+	ServerPort         *uint32
+	LogsDir            *string
 }
 
 // Initialize initializes the provider with the given configuration.
 func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.Empty, error) {
 	p.BasePath = &req.BasePath
-	p.ServerDownloadUrl = &req.ServerDownloadUrl
-	p.ServerVersion = &req.ServerVersion
+	p.DaytonaDownloadUrl = &req.DaytonaDownloadUrl
+	p.DaytonaVersion = &req.DaytonaVersion
 	p.ServerUrl = &req.ServerUrl
-	p.ServerApiUrl = &req.ServerApiUrl
+	p.ApiUrl = &req.ApiUrl
+	p.ApiPort = &req.ApiPort
+	p.ServerPort = &req.ServerPort
 	p.LogsDir = &req.LogsDir
 	p.NetworkKey = &req.NetworkKey
 
@@ -56,7 +60,22 @@ func (p *FlyProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) {
 	return new([]provider.ProviderTarget), nil
 }
 
-func (p *FlyProvider) CreateWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p *FlyProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getWorkspaceLogWriter(workspaceReq.Workspace.Id)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(workspaceReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	if err := flyutil.CreateApp(workspaceReq.Workspace, targetOptions); err != nil {
+		logWriter.Write([]byte("Failed to create workspace: " + err.Error() + "\n"))
+		return nil, err
+	}
+	logWriter.Write([]byte("Workspace created.\n"))
+
 	return new(util.Empty), nil
 }
 
@@ -68,7 +87,22 @@ func (p *FlyProvider) StopWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, 
 	return new(util.Empty), nil
 }
 
-func (p *FlyProvider) DestroyWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
+func (p *FlyProvider) DestroyWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getWorkspaceLogWriter(workspaceReq.Workspace.Id)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(workspaceReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	if err := flyutil.DeleteApp(workspaceReq.Workspace, targetOptions); err != nil {
+		logWriter.Write([]byte("Failed to destroy workspace: " + err.Error() + "\n"))
+		return nil, err
+	}
+	logWriter.Write([]byte("Workspace destroyed.\n"))
+
 	return new(util.Empty), nil
 }
 
@@ -94,10 +128,10 @@ func (p *FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) 
 }
 
 func (p *FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	if p.ServerDownloadUrl == nil {
-		return nil, errors.New("serverDownloadUrl not set. Did you forget to call Initialize")
+	if p.DaytonaDownloadUrl == nil {
+		return nil, errors.New("DaytonaDownloadUrl not set. Did you forget to call Initialize")
 	}
-	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 
 	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
 	if err != nil {
@@ -105,8 +139,8 @@ func (p *FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.
 		return nil, err
 	}
 
-	initScript := util.GetProjectStartScript(*p.ServerDownloadUrl, projectReq.Project.ApiKey)
-	machine, err := flyutil.CreateMachine(projectReq.Project, targetOptions, initScript)
+	initScript := util.GetProjectStartScript(*p.DaytonaDownloadUrl, projectReq.Project.ApiKey)
+	machine, err := flyutil.CreateMachine(projectReq.Project, targetOptions, projectReq.ContainerRegistry, logWriter, initScript)
 	if err != nil {
 		logWriter.Write([]byte("Failed to create machine: " + err.Error() + "\n"))
 		return nil, err
@@ -129,7 +163,7 @@ func (p *FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.
 }
 
 func (p *FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
 	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
@@ -148,7 +182,7 @@ func (p *FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.E
 }
 
 func (p *FlyProvider) StopProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
 	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
@@ -167,7 +201,7 @@ func (p *FlyProvider) StopProject(projectReq *provider.ProjectRequest) (*util.Em
 }
 
 func (p *FlyProvider) DestroyProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
 	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
@@ -190,7 +224,7 @@ func (p *FlyProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*work
 }
 
 func (p *FlyProvider) getProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
-	logWriter, cleanupFunc := p.getLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
 	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
@@ -223,7 +257,21 @@ func (p *FlyProvider) getProjectInfo(projectReq *provider.ProjectRequest) (*work
 	}, nil
 }
 
-func (p *FlyProvider) getLogWriter(workspaceId string, projectName string) (io.Writer, func()) {
+func (p *FlyProvider) getWorkspaceLogWriter(workspaceId string) (io.Writer, func()) {
+	logWriter := io.MultiWriter(&logwriters.InfoLogWriter{})
+	cleanupFunc := func() {}
+
+	if p.LogsDir != nil {
+		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
+		wsLogWriter := loggerFactory.CreateWorkspaceLogger(workspaceId)
+		logWriter = io.MultiWriter(&logwriters.InfoLogWriter{}, wsLogWriter)
+		cleanupFunc = func() { wsLogWriter.Close() }
+	}
+
+	return logWriter, cleanupFunc
+}
+
+func (p *FlyProvider) getProjectLogWriter(workspaceId string, projectName string) (io.Writer, func()) {
 	logWriter := io.MultiWriter(&logwriters.InfoLogWriter{})
 	cleanupFunc := func() {}
 
