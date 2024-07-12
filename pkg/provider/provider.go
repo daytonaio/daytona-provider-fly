@@ -3,18 +3,27 @@ package provider
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path"
+	"runtime"
 	"time"
 
 	"github.com/daytonaio/daytona-provider-fly/internal"
 	logwriters "github.com/daytonaio/daytona-provider-fly/internal/log"
 	flyutil "github.com/daytonaio/daytona-provider-fly/pkg/provider/util"
 	"github.com/daytonaio/daytona-provider-fly/pkg/types"
-	"github.com/daytonaio/daytona/pkg/logger"
+	"github.com/daytonaio/daytona/pkg/agent/ssh/config"
+	"github.com/daytonaio/daytona/pkg/docker"
+	"github.com/daytonaio/daytona/pkg/logs"
 	"github.com/daytonaio/daytona/pkg/provider"
 	"github.com/daytonaio/daytona/pkg/provider/util"
+	"github.com/daytonaio/daytona/pkg/ssh"
+	"github.com/daytonaio/daytona/pkg/tailscale"
 	"github.com/daytonaio/daytona/pkg/workspace"
 	"github.com/superfly/fly-go"
+	"tailscale.com/tsnet"
 )
 
 type FlyProvider struct {
@@ -27,19 +36,30 @@ type FlyProvider struct {
 	ApiPort            *uint32
 	ServerPort         *uint32
 	LogsDir            *string
+	LocalSockDir       string
+	tsnetConn          *tsnet.Server
 }
 
 // Initialize initializes the provider with the given configuration.
 func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.Empty, error) {
+	tmpDir := "/tmp"
+	if runtime.GOOS == "windows" {
+		tmpDir = os.TempDir()
+		if tmpDir == "" {
+			return nil, errors.New("could not determine temp dir")
+		}
+	}
+
 	p.BasePath = &req.BasePath
 	p.DaytonaDownloadUrl = &req.DaytonaDownloadUrl
 	p.DaytonaVersion = &req.DaytonaVersion
 	p.ServerUrl = &req.ServerUrl
+	p.NetworkKey = &req.NetworkKey
 	p.ApiUrl = &req.ApiUrl
 	p.ApiPort = &req.ApiPort
 	p.ServerPort = &req.ServerPort
 	p.LogsDir = &req.LogsDir
-	p.NetworkKey = &req.NetworkKey
+	p.LocalSockDir = path.Join(tmpDir, "fly-socks")
 
 	return new(util.Empty), nil
 }
@@ -61,6 +81,9 @@ func (p *FlyProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) {
 }
 
 func (p *FlyProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+	if p.DaytonaDownloadUrl == nil {
+		return nil, errors.New("DaytonaDownloadUrl not set. Did you forget to call Initialize")
+	}
 	logWriter, cleanupFunc := p.getWorkspaceLogWriter(workspaceReq.Workspace.Id)
 	defer cleanupFunc()
 
@@ -70,21 +93,83 @@ func (p *FlyProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest) (
 		return nil, err
 	}
 
-	if err := flyutil.CreateApp(workspaceReq.Workspace, targetOptions); err != nil {
+	envVars := workspace.GetWorkspaceEnvVars(workspaceReq.Workspace, workspace.WorkspaceEnvVarParams{
+		ApiUrl:        *p.ApiUrl,
+		ApiKey:        workspaceReq.Workspace.ApiKey,
+		ServerUrl:     *p.ServerUrl,
+		ServerVersion: *p.DaytonaVersion,
+	})
+
+	initScript := fmt.Sprintf(`apk add --no-cache curl bash && \ 
+	curl -sfL -H "Authorization: Bearer %s" %s | bash`,
+		workspaceReq.Workspace.ApiKey,
+		*p.DaytonaDownloadUrl,
+	)
+
+	machine, err := flyutil.CreateWorkspace(workspaceReq.Workspace, targetOptions, envVars, initScript)
+	if err != nil {
 		logWriter.Write([]byte("Failed to create workspace: " + err.Error() + "\n"))
 		return nil, err
 	}
-	logWriter.Write([]byte("Workspace created.\n"))
 
-	return new(util.Empty), nil
+	go func() {
+		if err := flyutil.GetWorkspaceLogs(workspaceReq.Workspace, targetOptions, machine.ID, logWriter); err != nil {
+			logWriter.Write([]byte(err.Error()))
+			defer cleanupFunc()
+		}
+	}()
+
+	err = p.waitForDial(workspaceReq.Workspace.Id, 5*time.Minute)
+	if err != nil {
+		logWriter.Write([]byte("Failed to dial: " + err.Error() + "\n"))
+		return nil, err
+	}
+	logWriter.Write([]byte("Workspace agent started.\n"))
+
+	client, err := p.getDockerClient(workspaceReq.Workspace.Id)
+	if err != nil {
+		logWriter.Write([]byte("Failed to get client: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	workspaceDir := p.getWorkspaceDir(workspaceReq.Workspace.Id)
+	sshClient, err := tailscale.NewSshClient(p.tsnetConn, &ssh.SessionConfig{
+		Hostname: workspaceReq.Workspace.Id,
+		Port:     config.SSH_PORT,
+	})
+	if err != nil {
+		logWriter.Write([]byte("Failed to create ssh client: " + err.Error() + "\n"))
+		return new(util.Empty), err
+	}
+	defer sshClient.Close()
+
+	return new(util.Empty), client.CreateWorkspace(workspaceReq.Workspace, workspaceDir, logWriter, sshClient)
 }
 
-func (p *FlyProvider) StartWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
-	return new(util.Empty), nil
+func (p *FlyProvider) StartWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getWorkspaceLogWriter(workspaceReq.Workspace.Id)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(workspaceReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	return new(util.Empty), flyutil.StartWorkspace(workspaceReq.Workspace, targetOptions)
 }
 
-func (p *FlyProvider) StopWorkspace(_ *provider.WorkspaceRequest) (*util.Empty, error) {
-	return new(util.Empty), nil
+func (p *FlyProvider) StopWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getWorkspaceLogWriter(workspaceReq.Workspace.Id)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(workspaceReq.TargetOptions)
+	if err != nil {
+		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	return new(util.Empty), flyutil.StopWorkspace(workspaceReq.Workspace, targetOptions)
 }
 
 func (p *FlyProvider) DestroyWorkspace(workspaceReq *provider.WorkspaceRequest) (*util.Empty, error) {
@@ -97,18 +182,13 @@ func (p *FlyProvider) DestroyWorkspace(workspaceReq *provider.WorkspaceRequest) 
 		return nil, err
 	}
 
-	if err := flyutil.DeleteApp(workspaceReq.Workspace, targetOptions); err != nil {
-		logWriter.Write([]byte("Failed to destroy workspace: " + err.Error() + "\n"))
-		return nil, err
-	}
-	logWriter.Write([]byte("Workspace destroyed.\n"))
-
-	return new(util.Empty), nil
+	return new(util.Empty), flyutil.DeleteWorkspace(workspaceReq.Workspace, targetOptions)
 }
 
 func (p *FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) (*workspace.WorkspaceInfo, error) {
-	workspaceInfo := &workspace.WorkspaceInfo{
-		Name: workspaceReq.Workspace.Name,
+	workspaceInfo, err := p.getWorkspaceInfo(workspaceReq)
+	if err != nil {
+		return nil, err
 	}
 
 	var projectInfos []*workspace.ProjectInfo
@@ -128,131 +208,147 @@ func (p *FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) 
 }
 
 func (p *FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
+	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
+	defer cleanupFunc()
+
+	dockerClient, err := p.getDockerClient(projectReq.Project.WorkspaceId)
+	if err != nil {
+		logWriter.Write([]byte("Failed to get docker client: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	sshClient, err := tailscale.NewSshClient(p.tsnetConn, &ssh.SessionConfig{
+		Hostname: projectReq.Project.WorkspaceId,
+		Port:     config.SSH_PORT,
+	})
+	if err != nil {
+		logWriter.Write([]byte("Failed to create ssh client: " + err.Error() + "\n"))
+		return new(util.Empty), err
+	}
+	defer sshClient.Close()
+
+	return new(util.Empty), dockerClient.CreateProject(&docker.CreateProjectOptions{
+		Project:    projectReq.Project,
+		ProjectDir: p.getProjectDir(projectReq),
+		Cr:         projectReq.ContainerRegistry,
+		LogWriter:  logWriter,
+		Gpc:        projectReq.GitProviderConfig,
+		SshClient:  sshClient,
+	})
+}
+
+func (p *FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
 	if p.DaytonaDownloadUrl == nil {
 		return nil, errors.New("DaytonaDownloadUrl not set. Did you forget to call Initialize")
 	}
 	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
-
-	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
-	if err != nil {
-		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
-		return nil, err
-	}
-
-	initScript := util.GetProjectStartScript(*p.DaytonaDownloadUrl, projectReq.Project.ApiKey)
-	machine, err := flyutil.CreateMachine(projectReq.Project, targetOptions, projectReq.ContainerRegistry, logWriter, initScript)
-	if err != nil {
-		logWriter.Write([]byte("Failed to create machine: " + err.Error() + "\n"))
-		return nil, err
-	}
-	logWriter.Write([]byte("Project created\n"))
-
-	if err := checkMachineReady(projectReq, targetOptions); err != nil {
-		logWriter.Write([]byte("Failed to check machine status: " + err.Error() + "\n"))
-		return nil, err
-	}
-
-	go func() {
-		if err := flyutil.GetMachineLogs(projectReq.Project, targetOptions, machine.ID, logWriter); err != nil {
-			logWriter.Write([]byte(err.Error()))
-			defer cleanupFunc()
-		}
-	}()
-
-	return new(util.Empty), nil
-}
-
-func (p *FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
-	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
-	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	dockerClient, err := p.getDockerClient(projectReq.Project.WorkspaceId)
 	if err != nil {
-		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		logWriter.Write([]byte("Failed to get docker client: " + err.Error() + "\n"))
 		return nil, err
 	}
 
-	if err := flyutil.StartMachine(projectReq.Project, targetOptions); err != nil {
-		logWriter.Write([]byte("Failed to start machine: " + err.Error() + "\n"))
-		return nil, err
+	sshClient, err := tailscale.NewSshClient(p.tsnetConn, &ssh.SessionConfig{
+		Hostname: projectReq.Project.WorkspaceId,
+		Port:     config.SSH_PORT,
+	})
+	if err != nil {
+		logWriter.Write([]byte("Failed to create ssh client: " + err.Error() + "\n"))
+		return new(util.Empty), err
 	}
-	logWriter.Write([]byte("Project started.\n"))
+	defer sshClient.Close()
 
-	return new(util.Empty), nil
+	return new(util.Empty), dockerClient.StartProject(&docker.CreateProjectOptions{
+		Project:    projectReq.Project,
+		ProjectDir: p.getProjectDir(projectReq),
+		Cr:         projectReq.ContainerRegistry,
+		LogWriter:  logWriter,
+		Gpc:        projectReq.GitProviderConfig,
+		SshClient:  sshClient,
+	}, *p.DaytonaDownloadUrl)
 }
 
 func (p *FlyProvider) StopProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
 	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
-	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	dockerClient, err := p.getDockerClient(projectReq.Project.WorkspaceId)
 	if err != nil {
-		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		logWriter.Write([]byte("Failed to get docker client: " + err.Error() + "\n"))
 		return nil, err
 	}
 
-	if err := flyutil.StopMachine(projectReq.Project, targetOptions); err != nil {
-		logWriter.Write([]byte("Failed to stop machine: " + err.Error() + "\n"))
-		return nil, err
-	}
-	logWriter.Write([]byte("Project stopped.\n"))
-
-	return new(util.Empty), nil
+	return new(util.Empty), dockerClient.StopProject(projectReq.Project, logWriter)
 }
 
 func (p *FlyProvider) DestroyProject(projectReq *provider.ProjectRequest) (*util.Empty, error) {
 	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
-	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	dockerClient, err := p.getDockerClient(projectReq.Project.WorkspaceId)
 	if err != nil {
-		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
+		logWriter.Write([]byte("Failed to get docker client: " + err.Error() + "\n"))
 		return nil, err
 	}
 
-	if err := flyutil.DeleteMachine(projectReq.Project, targetOptions); err != nil {
-		logWriter.Write([]byte("Failed to destroy machine: " + err.Error() + "\n"))
-		return nil, err
+	sshClient, err := tailscale.NewSshClient(p.tsnetConn, &ssh.SessionConfig{
+		Hostname: projectReq.Project.WorkspaceId,
+		Port:     config.SSH_PORT,
+	})
+	if err != nil {
+		logWriter.Write([]byte("Failed to create ssh client: " + err.Error() + "\n"))
+		return new(util.Empty), err
 	}
-	logWriter.Write([]byte("Project destroyed.\n"))
+	defer sshClient.Close()
 
-	return new(util.Empty), nil
+	return new(util.Empty), dockerClient.DestroyProject(projectReq.Project, p.getProjectDir(projectReq), sshClient)
 }
 
 func (p *FlyProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
-	return p.getProjectInfo(projectReq)
-}
-
-func (p *FlyProvider) getProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
 	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
-	targetOptions, err := types.ParseTargetOptions(projectReq.TargetOptions)
+	dockerClient, err := p.getDockerClient(projectReq.Project.WorkspaceId)
+	if err != nil {
+		logWriter.Write([]byte("Failed to get docker client: " + err.Error() + "\n"))
+		return nil, err
+	}
+
+	return dockerClient.GetProjectInfo(projectReq.Project)
+}
+
+func (p *FlyProvider) getWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) (*workspace.WorkspaceInfo, error) {
+	logWriter, cleanupFunc := p.getWorkspaceLogWriter(workspaceReq.Workspace.Id)
+	defer cleanupFunc()
+
+	targetOptions, err := types.ParseTargetOptions(workspaceReq.TargetOptions)
 	if err != nil {
 		logWriter.Write([]byte("Failed to parse target options: " + err.Error() + "\n"))
 		return nil, err
 	}
 
-	machine, err := flyutil.GetMachine(projectReq.Project, targetOptions)
+	machine, err := flyutil.GetMachine(workspaceReq.Workspace, targetOptions)
 	if err != nil {
 		logWriter.Write([]byte("Failed to get machine: " + err.Error() + "\n"))
 		return nil, err
+
 	}
 
-	metadata := types.ProjectMetadata{
+	metadata := types.WorkspaceMetadata{
 		MachineId: machine.ID,
 		VolumeId:  machine.Config.Mounts[0].Volume,
+		IsRunning: machine.State == fly.MachineStateStarted,
+		Created:   machine.CreatedAt,
 	}
-
 	jsonMetadata, err := json.Marshal(metadata)
 	if err != nil {
 		return nil, err
 	}
 
-	return &workspace.ProjectInfo{
-		Name:             projectReq.Project.Name,
-		IsRunning:        machine.State == fly.MachineStateStarted,
-		Created:          machine.CreatedAt,
+	return &workspace.WorkspaceInfo{
+		Name:             workspaceReq.Workspace.Name,
 		ProviderMetadata: string(jsonMetadata),
 	}, nil
 }
@@ -262,8 +358,8 @@ func (p *FlyProvider) getWorkspaceLogWriter(workspaceId string) (io.Writer, func
 	cleanupFunc := func() {}
 
 	if p.LogsDir != nil {
-		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
-		wsLogWriter := loggerFactory.CreateWorkspaceLogger(workspaceId)
+		loggerFactory := logs.NewLoggerFactory(*p.LogsDir)
+		wsLogWriter := loggerFactory.CreateWorkspaceLogger(workspaceId, logs.LogSourceProvider)
 		logWriter = io.MultiWriter(&logwriters.InfoLogWriter{}, wsLogWriter)
 		cleanupFunc = func() { wsLogWriter.Close() }
 	}
@@ -276,8 +372,8 @@ func (p *FlyProvider) getProjectLogWriter(workspaceId string, projectName string
 	cleanupFunc := func() {}
 
 	if p.LogsDir != nil {
-		loggerFactory := logger.NewLoggerFactory(*p.LogsDir)
-		projectLogWriter := loggerFactory.CreateProjectLogger(workspaceId, projectName)
+		loggerFactory := logs.NewLoggerFactory(*p.LogsDir)
+		projectLogWriter := loggerFactory.CreateProjectLogger(workspaceId, projectName, logs.LogSourceProvider)
 		logWriter = io.MultiWriter(&logwriters.InfoLogWriter{}, projectLogWriter)
 		cleanupFunc = func() { projectLogWriter.Close() }
 	}
@@ -285,24 +381,13 @@ func (p *FlyProvider) getProjectLogWriter(workspaceId string, projectName string
 	return logWriter, cleanupFunc
 }
 
-// checkMachineReady checks if the machine for the given workspace is ready to use.
-// It polls the status periodically until the machine is ready or a timeout is reached.
-func checkMachineReady(projectReq *provider.ProjectRequest, targetOptions *types.TargetOptions) error {
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
+func (p *FlyProvider) getWorkspaceDir(workspaceId string) string {
+	return fmt.Sprintf("/tmp/%s", workspaceId)
+}
 
-	end := time.Now().Add(5 * time.Minute)
-
-	for {
-		select {
-		case <-ticker.C:
-			if flyutil.IsMachineReady(projectReq.Project, targetOptions) {
-				return nil
-			}
-		default:
-			if time.Now().After(end) {
-				return errors.New("machine was not ready within 5 minutes")
-			}
-		}
-	}
+func (p *FlyProvider) getProjectDir(projectReq *provider.ProjectRequest) string {
+	return path.Join(
+		p.getWorkspaceDir(projectReq.Project.WorkspaceId),
+		fmt.Sprintf("%s-%s", projectReq.Project.WorkspaceId, projectReq.Project.Name),
+	)
 }
