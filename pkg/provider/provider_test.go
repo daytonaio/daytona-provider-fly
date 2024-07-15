@@ -8,15 +8,13 @@ import (
 
 	flyutil "github.com/daytonaio/daytona-provider-fly/pkg/provider/util"
 	"github.com/daytonaio/daytona-provider-fly/pkg/types"
-	"github.com/daytonaio/daytona/pkg/gitprovider"
 	"github.com/daytonaio/daytona/pkg/provider"
 	"github.com/daytonaio/daytona/pkg/workspace"
 )
 
 var (
-	orgSlug       = os.Getenv("FLY_TEST_ORG_SLUG")
-	authToken     = os.Getenv("FLY_TEST_ACCESS_TOKEN")
-	optionsString string
+	orgSlug   = os.Getenv("FLY_TEST_ORG_SLUG")
+	authToken = os.Getenv("FLY_TEST_ACCESS_TOKEN")
 
 	flyProvider   = &FlyProvider{}
 	targetOptions = &types.TargetOptions{
@@ -27,81 +25,54 @@ var (
 		AuthToken: &authToken,
 	}
 
-	project1 = &workspace.Project{
-		Name: "test",
-		Repository: &gitprovider.GitRepository{
-			Id:   "123",
-			Url:  "https://github.com/daytonaio/daytona",
-			Name: "daytona",
-		},
-		Image:       "daytonaio/workspace-project:latest",
-		WorkspaceId: "123",
-	}
+	workspaceReq *provider.WorkspaceRequest
 )
 
-func TestCreateProject(t *testing.T) {
-	projectReq := &provider.ProjectRequest{
-		TargetOptions: optionsString,
-		Project:       project1,
-	}
+func TestCreateWorkspace(t *testing.T) {
+	_, _ = flyProvider.CreateWorkspace(workspaceReq)
 
-	_, err := flyProvider.CreateProject(projectReq)
-	if err != nil {
-		t.Fatalf("Error creating project: %s", err)
-	}
-
-	_, err = flyutil.GetMachine(project1, targetOptions)
+	_, err := flyutil.GetMachine(workspaceReq.Workspace, targetOptions)
 	if err != nil {
 		t.Fatalf("Error getting machine: %s", err)
 	}
 }
 
-func TestProjectInfo(t *testing.T) {
-	projectReq := &provider.ProjectRequest{
-		TargetOptions: optionsString,
-		Project:       project1,
-	}
-
-	projectInfo, err := flyProvider.GetProjectInfo(projectReq)
+func TestWorkspaceInfo(t *testing.T) {
+	workspaceInfo, err := flyProvider.GetWorkspaceInfo(workspaceReq)
 	if err != nil {
 		t.Fatalf("Error getting workspace info: %s", err)
 	}
 
-	var projectMetadata types.ProjectMetadata
-	err = json.Unmarshal([]byte(projectInfo.ProviderMetadata), &projectMetadata)
+	var workspaceMetadata types.WorkspaceMetadata
+	err = json.Unmarshal([]byte(workspaceInfo.ProviderMetadata), &workspaceMetadata)
 	if err != nil {
-		t.Fatalf("Error unmarshalling project metadata: %s", err)
+		t.Fatalf("Error unmarshalling workspace metadata: %s", err)
 	}
 
-	machine, err := flyutil.GetMachine(project1, targetOptions)
+	machine, err := flyutil.GetMachine(workspaceReq.Workspace, targetOptions)
 	if err != nil {
 		t.Fatalf("Error getting machine: %s", err)
 	}
 
-	if projectMetadata.MachineId != machine.ID {
-		t.Fatalf("Expected machine id %s, got %s", projectMetadata.MachineId, machine.ID)
+	if workspaceMetadata.MachineId != machine.ID {
+		t.Fatalf("Expected machine id %s, got %s", workspaceMetadata.MachineId, machine.ID)
 	}
 
-	if projectMetadata.VolumeId != machine.Config.Mounts[0].Volume {
-		t.Fatalf("Expected volume id %s, got %s", projectMetadata.VolumeId, machine.Config.Mounts[0].Volume)
+	if workspaceMetadata.VolumeId != machine.Config.Mounts[0].Volume {
+		t.Fatalf("Expected volume id %s, got %s", workspaceMetadata.VolumeId, machine.Config.Mounts[0].Volume)
 	}
 }
 
-func TestDestroyProject(t *testing.T) {
-	projectReq := &provider.ProjectRequest{
-		TargetOptions: optionsString,
-		Project:       project1,
-	}
-
-	_, err := flyProvider.DestroyProject(projectReq)
+func TestDestroyWorkspace(t *testing.T) {
+	_, err := flyProvider.DestroyWorkspace(workspaceReq)
 	if err != nil {
-		t.Fatalf("Error destroying project: %s", err)
+		t.Fatalf("Error destroying workspace: %s", err)
 	}
 	time.Sleep(3 * time.Second)
 
-	_, err = flyutil.GetMachine(project1, targetOptions)
+	_, err = flyutil.GetMachine(workspaceReq.Workspace, targetOptions)
 	if err == nil {
-		t.Fatalf("Error destroyed project still exists")
+		t.Fatalf("Error destroyed workspace still exists")
 	}
 }
 
@@ -122,5 +93,13 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	optionsString = string(opts)
+
+	workspaceReq = &provider.WorkspaceRequest{
+		TargetOptions: string(opts),
+		Workspace: &workspace.Workspace{
+			Id:   "123",
+			Name: "workspace",
+		},
+	}
+
 }

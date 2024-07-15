@@ -2,50 +2,101 @@ package util
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
-	"slices"
 	"time"
 
 	"github.com/daytonaio/daytona-provider-fly/internal"
 	"github.com/daytonaio/daytona-provider-fly/pkg/types"
-	"github.com/daytonaio/daytona/pkg/containerregistry"
-	"github.com/daytonaio/daytona/pkg/docker"
 	"github.com/daytonaio/daytona/pkg/workspace"
-	"github.com/docker/docker/client"
 	log "github.com/sirupsen/logrus"
 	"github.com/superfly/fly-go"
 	"github.com/superfly/fly-go/flaps"
 	"github.com/superfly/fly-go/tokens"
 )
 
-const (
-	registryServer = "registry.fly.io"
-	registryUser   = "x"
-)
+// CreateWorkspace creates a new fly.io app for the provided workspace.
+func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, envVars map[string]string, initScript string) (*fly.Machine, error) {
+	appName := getResourceName(workspace.Id)
+	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	if err != nil {
+		return nil, err
+	}
 
-// CreateApp creates a new app for the provided workspace.
-func CreateApp(workspace *workspace.Workspace, opts *types.TargetOptions) error {
+	err = flapsClient.CreateApp(context.Background(), appName, opts.OrgSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	err = flapsClient.WaitForApp(context.Background(), appName)
+	if err != nil {
+		return nil, err
+	}
+
+	machine, err := createMachine(workspace, opts, envVars, initScript)
+	if err != nil {
+		return nil, err
+	}
+
+	err = flapsClient.Wait(context.Background(), machine, fly.MachineStateStarted, time.Minute*5)
+	if err != nil {
+		return nil, err
+	}
+
+	return machine, nil
+}
+
+// StartWorkspace starts the machine for the provided workspace.
+func StartWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
 	appName := getResourceName(workspace.Id)
 	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	err = flapsClient.CreateApp(context.Background(), appName, opts.OrgSlug)
+	err = flapsClient.WaitForApp(context.Background(), appName)
+	if err != nil {
+		return fmt.Errorf("there was an issue waiting for the app: %w", err)
+	}
+
+	machineName := getResourceName(workspace.Id)
+	machine, err := findMachine(flapsClient, machineName)
 	if err != nil {
 		return err
 	}
 
-	return flapsClient.WaitForApp(context.Background(), appName)
+	// Start the machine if it is stopped
+	if machine.State == fly.MachineStateStopped {
+		_, err = flapsClient.Start(context.Background(), machine.ID, "")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-// DeleteApp deletes the app associated with the provided workspace.
-func DeleteApp(workspace *workspace.Workspace, opts *types.TargetOptions) error {
+// StopWorkspace stops the machine for the provided workspace.
+func StopWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
+	appName := getResourceName(workspace.Id)
+	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	if err != nil {
+		return err
+	}
+
+	machineName := getResourceName(workspace.Id)
+	machine, err := findMachine(flapsClient, machineName)
+	if err != nil {
+		return err
+	}
+
+	return flapsClient.Stop(context.Background(), fly.StopMachineInput{ID: machine.ID}, "")
+}
+
+// DeleteWorkspace deletes the app associated with the provided workspace.
+func DeleteWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
 	appName := getResourceName(workspace.Id)
 	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
 	if err != nil {
@@ -72,21 +123,16 @@ func DeleteApp(workspace *workspace.Workspace, opts *types.TargetOptions) error 
 	return nil
 }
 
-// CreateMachine creates a new machine for the provided workspace.
-func CreateMachine(project *workspace.Project, opts *types.TargetOptions, containerRegistry *containerregistry.ContainerRegistry, logWriter io.Writer, initScript string) (*fly.Machine, error) {
-	appName := getResourceName(project.WorkspaceId)
+// createMachine creates a new machine for the provided workspace.
+func createMachine(workspace *workspace.Workspace, opts *types.TargetOptions, envVars map[string]string, initScript string) (*fly.Machine, error) {
+	appName := getResourceName(workspace.Id)
 	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
 	if err != nil {
 		return nil, err
 	}
 
-	image, err := deployImage(project, containerRegistry, logWriter, *opts.AuthToken)
-	if err != nil {
-		return nil, err
-	}
-
 	volume, err := flapsClient.CreateVolume(context.Background(), fly.CreateVolumeRequest{
-		Name:   getVolumeName(project.Name),
+		Name:   getVolumeName(workspace.Id),
 		SizeGb: &opts.DiskSize,
 		Region: opts.Region,
 	})
@@ -94,135 +140,63 @@ func CreateMachine(project *workspace.Project, opts *types.TargetOptions, contai
 		return nil, err
 	}
 
-	envVars := map[string]string{}
-	for key, value := range project.EnvVars {
-		envVars[key] = value
-	}
+	script := fmt.Sprintf(`#!/bin/sh
+# Start Docker daemon
+dockerd-entrypoint.sh &
+
+# Wait for Docker to be ready
+while ! docker info > /dev/null 2>&1; do
+    echo "Waiting for Docker to start..."
+    sleep 1
+done
+
+# Create daytona user and add to docker group
+adduser -D -G docker daytona
+
+# Download and install daytona agent
+%s
+
+# Switch to daytona user and run Daytona agent
+su daytona -c "daytona agent --host"
+`, initScript)
 
 	return flapsClient.Launch(context.Background(), fly.LaunchMachineInput{
-		Name: getResourceName(project.Name),
+		Name: getResourceName(workspace.Id),
 		Config: &fly.MachineConfig{
 			VMSize: opts.Size,
-			Image:  image,
+			Image:  "docker:dind",
 			Mounts: []fly.MachineMount{
 				{
 					Name:   volume.Name,
 					Volume: volume.ID,
-					Path:   fmt.Sprintf("/home/%s", project.User),
+					Path:   "/var/lib/docker",
 					SizeGb: opts.DiskSize,
 				},
 			},
-			Env: envVars,
 			Init: fly.MachineInit{
-				Entrypoint: []string{"bash", "-c", initScript},
+				Entrypoint: []string{"/bin/sh", "-c", script},
 			},
+			Env: envVars,
 		},
 		Region: opts.Region,
 	})
 }
 
-// IsMachineReady checks if the machine for the given workspace is ready to use.
-// It returns true if the machine is in a known state (created, started, or stopped),
-// otherwise it returns false.
-func IsMachineReady(project *workspace.Project, opts *types.TargetOptions) bool {
-	appName := getResourceName(project.WorkspaceId)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
-	if err != nil {
-		return false
-	}
-
-	machineName := getResourceName(project.Name)
-	machine, err := findMachine(flapsClient, machineName)
-	if err != nil {
-		return false
-	}
-
-	knownStatus := []string{fly.MachineStateCreated, fly.MachineStateStarted, fly.MachineStateStopped}
-	return slices.Contains(knownStatus, machine.State)
-}
-
-// StartMachine starts the machine for the provided workspace.
-func StartMachine(project *workspace.Project, opts *types.TargetOptions) error {
-	appName := getResourceName(project.WorkspaceId)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
-	if err != nil {
-		return err
-	}
-
-	err = flapsClient.WaitForApp(context.Background(), appName)
-	if err != nil {
-		return fmt.Errorf("there was an issue waiting for the app: %w", err)
-	}
-
-	machineName := getResourceName(project.Name)
-	machine, err := findMachine(flapsClient, machineName)
-	if err != nil {
-		return err
-	}
-
-	// Start the machine if it is stopped
-	if machine.State == fly.MachineStateStopped {
-		_, err = flapsClient.Start(context.Background(), machine.ID, "")
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// StopMachine stops the machine for the provided workspace.
-func StopMachine(project *workspace.Project, opts *types.TargetOptions) error {
-	appName := getResourceName(project.WorkspaceId)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
-	if err != nil {
-		return err
-	}
-
-	machineName := getResourceName(project.Name)
-	machine, err := findMachine(flapsClient, machineName)
-	if err != nil {
-		return err
-	}
-
-	return flapsClient.Stop(context.Background(), fly.StopMachineInput{ID: machine.ID}, "")
-}
-
-// DeleteMachine deletes the machine for the provided workspace.
-func DeleteMachine(project *workspace.Project, opts *types.TargetOptions) error {
-	appName := getResourceName(project.WorkspaceId)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
-	if err != nil {
-		return err
-	}
-
-	machineName := getResourceName(project.Name)
-	machine, err := findMachine(flapsClient, machineName)
-	if err != nil {
-		return err
-	}
-
-	return flapsClient.Destroy(context.Background(), fly.RemoveMachineInput{
-		ID:   machine.ID,
-		Kill: true,
-	}, "")
-}
-
 // GetMachine returns the machine for the provided workspace.
-func GetMachine(project *workspace.Project, opts *types.TargetOptions) (*fly.Machine, error) {
-	appName := getResourceName(project.WorkspaceId)
+func GetMachine(workspace *workspace.Workspace, opts *types.TargetOptions) (*fly.Machine, error) {
+	appName := getResourceName(workspace.Id)
 	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
 	if err != nil {
 		return nil, err
 	}
 
-	machineName := getResourceName(project.Name)
+	machineName := getResourceName(workspace.Id)
 	return findMachine(flapsClient, machineName)
 }
 
-// GetMachineLogs fetches app logs for a specified machine and writes the fetched log entries to the logger.
-func GetMachineLogs(project *workspace.Project, opts *types.TargetOptions, machineId string, logger io.Writer) error {
-	appName := getResourceName(project.WorkspaceId)
+// GetWorkspaceLogs fetches app logs for a specified workspace machine and writes the fetched log entries to the logger.
+func GetWorkspaceLogs(workspace *workspace.Workspace, opts *types.TargetOptions, machineId string, logger io.Writer) error {
+	appName := getResourceName(workspace.Id)
 
 	fly.SetBaseURL("https://api.fly.io")
 	client := fly.NewClientFromOptions(fly.ClientOptions{
@@ -321,61 +295,4 @@ func pollLogs(out chan<- string, client *fly.Client, appName, region, machineId 
 			out <- logMessage
 		}
 	}
-}
-
-// deployImage pulls, tags, and pushes the image from private registry to the Fly.io registry.
-func deployImage(project *workspace.Project, containerRegistry *containerregistry.ContainerRegistry, logWriter io.Writer, authToken string) (string, error) {
-	if containerRegistry == nil {
-		return project.Image, nil
-	}
-
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return "", err
-	}
-
-	if isPublicImage(dockerClient, project.Image) {
-		return project.Image, nil
-	}
-	logWriter.Write([]byte(fmt.Sprintf("Using private container registry: %s\n", containerRegistry.Server)))
-
-	daytonaDockerClient := docker.NewDockerClient(docker.DockerClientConfig{ApiClient: dockerClient})
-	machineName := getResourceName(project.Name)
-
-	logWriter.Write([]byte(fmt.Sprintf("Pulling private containter image %s\n", machineName)))
-	if err := daytonaDockerClient.PullImage(project.Image, containerRegistry, logWriter); err != nil {
-		logWriter.Write([]byte(fmt.Sprintf("Error pulling private containter image: %s\n", err)))
-		return "", err
-	}
-
-	imageTag := generateImageTag(project.Image)
-	flyImageName := fmt.Sprintf("%s/%s:%s", registryServer, getResourceName(project.WorkspaceId), imageTag)
-	if err := dockerClient.ImageTag(context.Background(), project.Image, flyImageName); err != nil {
-		return "", err
-	}
-
-	logWriter.Write([]byte(fmt.Sprintf("Pushing %s to %s make it available to fly instances\n", flyImageName, registryServer)))
-	flyRegistry := &containerregistry.ContainerRegistry{
-		Server:   registryServer,
-		Username: registryUser,
-		Password: authToken,
-	}
-	if err := daytonaDockerClient.PushImage(flyImageName, flyRegistry, logWriter); err != nil {
-		logWriter.Write([]byte(fmt.Sprintf("Failed to push image: %s\n", err)))
-		return "", err
-	}
-
-	return flyImageName, nil
-}
-
-// isPublicImage checks if the given image is a public image.
-func isPublicImage(dockerClient *client.Client, imageName string) bool {
-	_, err := dockerClient.DistributionInspect(context.Background(), imageName, "")
-	return err == nil
-}
-
-// generateImageTag generates a unique tag for the image based on its hash.
-func generateImageTag(image string) string {
-	hash := sha256.Sum256([]byte(image))
-	return hex.EncodeToString(hash[:])
 }
