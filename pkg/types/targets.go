@@ -9,11 +9,11 @@ import (
 )
 
 type TargetOptions struct {
-	Region    string  `json:"Region"`
-	Size      string  `json:"Size"`
-	DiskSize  int     `json:"Disk Size"`
-	OrgSlug   string  `json:"Org Slug"`
-	AuthToken *string `json:"Auth Token,omitempty"`
+	Region    string `json:"Region"`
+	Size      string `json:"Size"`
+	DiskSize  int    `json:"Disk Size"`
+	OrgSlug   string `json:"Org Slug"`
+	AuthToken string `json:"Auth Token,omitempty"`
 }
 
 func GetTargetManifest() *provider.ProviderTargetManifest {
@@ -53,15 +53,15 @@ func ParseTargetOptions(optionsJson string) (*TargetOptions, error) {
 		return nil, err
 	}
 
-	if targetOptions.AuthToken == nil {
+	if targetOptions.AuthToken == "" {
 		// Fetch token from environment variable
 		token, ok := os.LookupEnv("FLY_ACCESS_TOKEN")
 		if ok {
-			targetOptions.AuthToken = &token
+			targetOptions.AuthToken = token
 		}
 	}
 
-	if targetOptions.AuthToken == nil {
+	if targetOptions.AuthToken == "" {
 		return nil, fmt.Errorf("auth token not set in env/target options")
 	}
 

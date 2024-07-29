@@ -93,20 +93,13 @@ func (p *FlyProvider) CreateWorkspace(workspaceReq *provider.WorkspaceRequest) (
 		return nil, err
 	}
 
-	envVars := workspace.GetWorkspaceEnvVars(workspaceReq.Workspace, workspace.WorkspaceEnvVarParams{
-		ApiUrl:        *p.ApiUrl,
-		ApiKey:        workspaceReq.Workspace.ApiKey,
-		ServerUrl:     *p.ServerUrl,
-		ServerVersion: *p.DaytonaVersion,
-	})
-
 	initScript := fmt.Sprintf(`apk add --no-cache curl bash && \ 
 	curl -sfL -H "Authorization: Bearer %s" %s | bash`,
 		workspaceReq.Workspace.ApiKey,
 		*p.DaytonaDownloadUrl,
 	)
 
-	machine, err := flyutil.CreateWorkspace(workspaceReq.Workspace, targetOptions, envVars, initScript)
+	machine, err := flyutil.CreateWorkspace(workspaceReq.Workspace, targetOptions, initScript)
 	if err != nil {
 		logWriter.Write([]byte("Failed to create workspace: " + err.Error() + "\n"))
 		return nil, err

@@ -22,7 +22,7 @@ var (
 		Size:      "shared-cpu-4x",
 		DiskSize:  10,
 		OrgSlug:   orgSlug,
-		AuthToken: &authToken,
+		AuthToken: authToken,
 	}
 
 	workspaceReq *provider.WorkspaceRequest

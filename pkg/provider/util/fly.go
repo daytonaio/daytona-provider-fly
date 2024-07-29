@@ -18,9 +18,9 @@ import (
 )
 
 // CreateWorkspace creates a new fly.io app for the provided workspace.
-func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, envVars map[string]string, initScript string) (*fly.Machine, error) {
+func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, initScript string) (*fly.Machine, error) {
 	appName := getResourceName(workspace.Id)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, 
 		return nil, err
 	}
 
-	machine, err := createMachine(workspace, opts, envVars, initScript)
+	machine, err := createMachine(workspace, opts, initScript)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, 
 // StartWorkspace starts the machine for the provided workspace.
 func StartWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
 	appName := getResourceName(workspace.Id)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func StartWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) e
 // StopWorkspace stops the machine for the provided workspace.
 func StopWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
 	appName := getResourceName(workspace.Id)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func StopWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) er
 // DeleteWorkspace deletes the app associated with the provided workspace.
 func DeleteWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
 	appName := getResourceName(workspace.Id)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return err
 	}
@@ -124,9 +124,9 @@ func DeleteWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) 
 }
 
 // createMachine creates a new machine for the provided workspace.
-func createMachine(workspace *workspace.Workspace, opts *types.TargetOptions, envVars map[string]string, initScript string) (*fly.Machine, error) {
+func createMachine(workspace *workspace.Workspace, opts *types.TargetOptions, initScript string) (*fly.Machine, error) {
 	appName := getResourceName(workspace.Id)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ su daytona -c "daytona agent --host"
 			Init: fly.MachineInit{
 				Entrypoint: []string{"/bin/sh", "-c", script},
 			},
-			Env: envVars,
+			Env: workspace.EnvVars,
 		},
 		Region: opts.Region,
 	})
@@ -185,7 +185,7 @@ su daytona -c "daytona agent --host"
 // GetMachine returns the machine for the provided workspace.
 func GetMachine(workspace *workspace.Workspace, opts *types.TargetOptions) (*fly.Machine, error) {
 	appName := getResourceName(workspace.Id)
-	flapsClient, err := createFlapsClient(appName, *opts.AuthToken)
+	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func GetWorkspaceLogs(workspace *workspace.Workspace, opts *types.TargetOptions,
 
 	fly.SetBaseURL("https://api.fly.io")
 	client := fly.NewClientFromOptions(fly.ClientOptions{
-		Tokens:  tokens.Parse(*opts.AuthToken),
+		Tokens:  tokens.Parse(opts.AuthToken),
 		Name:    appName,
 		Version: internal.Version,
 	})
