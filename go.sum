@@ -732,6 +732,8 @@ github.com/davidmz/go-pageant v1.0.2 h1:bPblRCh5jGU+Uptpz6LgMZGD5hJoOt7otgT454Wv
 github.com/davidmz/go-pageant v1.0.2/go.mod h1:P2EDDnMqIwG5Rrp05dTRITj9z2zpGcD9efWSkTNKLIE=
 github.com/daytonaio/daytona v0.22.0 h1:JW9VY3iNZv0lAc06hux5hnJBaCQnmti35D4ZGKT7OjU=
 github.com/daytonaio/daytona v0.22.0/go.mod h1:Wt2JaDzVbwyOKSj4/g//+TQrdZk0WP6IvUgUDanHVHI=
+github.com/daytonaio/daytona v0.23.0 h1:gwOqjKN/RSe1xhew+CrgefD8I+v53jOy37EBf9CQcmE=
+github.com/daytonaio/daytona v0.23.0/go.mod h1:8yXvTGwapmO6ygfj2jMR9wWwjbpW7HBGNm8ALAeqFMQ=
 github.com/dblohm7/wingoes v0.0.0-20231025182615-65d8b4b5428f h1:c5mkOIXbHZVKGQaSEZZyLW9ORD+h4PT2TPF8IQPwyOs=
 github.com/dblohm7/wingoes v0.0.0-20231025182615-65d8b4b5428f/go.mod h1:6NCrWM5jRefaG7iN0iMShPalLsljHWBh9v1zxM2f8Xs=
 github.com/digitalocean/go-smbios v0.0.0-20180907143718-390a4f403a8e h1:vUmf0yezR0y7jJ5pceLHthLaYf4bA5T14B6q39S4q2Q=
