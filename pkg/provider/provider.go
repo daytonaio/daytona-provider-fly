@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
-	"runtime"
 	"time"
 
 	"github.com/daytonaio/daytona-provider-fly/internal"
@@ -36,20 +34,11 @@ type FlyProvider struct {
 	ApiPort            *uint32
 	ServerPort         *uint32
 	LogsDir            *string
-	LocalSockDir       string
 	tsnetConn          *tsnet.Server
 }
 
 // Initialize initializes the provider with the given configuration.
 func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.Empty, error) {
-	tmpDir := "/tmp"
-	if runtime.GOOS == "windows" {
-		tmpDir = os.TempDir()
-		if tmpDir == "" {
-			return nil, errors.New("could not determine temp dir")
-		}
-	}
-
 	p.BasePath = &req.BasePath
 	p.DaytonaDownloadUrl = &req.DaytonaDownloadUrl
 	p.DaytonaVersion = &req.DaytonaVersion
@@ -59,7 +48,6 @@ func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.
 	p.ApiPort = &req.ApiPort
 	p.ServerPort = &req.ServerPort
 	p.LogsDir = &req.LogsDir
-	p.LocalSockDir = path.Join(tmpDir, "fly-socks")
 
 	return new(util.Empty), nil
 }

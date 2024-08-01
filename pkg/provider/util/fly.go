@@ -160,6 +160,11 @@ adduser -D -G docker daytona
 su daytona -c "daytona agent --host"
 `, initScript)
 
+	envVars := workspace.EnvVars
+	// Disable running docker with TLS
+	envVars["DOCKER_TLS_VERIFY"] = ""
+	envVars["DOCKER_TLS_CERTDIR"] = ""
+
 	return flapsClient.Launch(context.Background(), fly.LaunchMachineInput{
 		Name: getResourceName(workspace.Id),
 		Config: &fly.MachineConfig{
@@ -176,7 +181,7 @@ su daytona -c "daytona agent --host"
 			Init: fly.MachineInit{
 				Entrypoint: []string{"/bin/sh", "-c", script},
 			},
-			Env: workspace.EnvVars,
+			Env: envVars,
 		},
 		Region: opts.Region,
 	})
