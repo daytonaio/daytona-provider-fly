@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
-	"runtime"
 	"time"
 
 	"github.com/daytonaio/daytona-provider-fly/internal"
@@ -22,6 +20,7 @@ import (
 	"github.com/daytonaio/daytona/pkg/ssh"
 	"github.com/daytonaio/daytona/pkg/tailscale"
 	"github.com/daytonaio/daytona/pkg/workspace"
+	"github.com/daytonaio/daytona/pkg/workspace/project"
 	"github.com/superfly/fly-go"
 	"tailscale.com/tsnet"
 )
@@ -36,20 +35,11 @@ type FlyProvider struct {
 	ApiPort            *uint32
 	ServerPort         *uint32
 	LogsDir            *string
-	LocalSockDir       string
 	tsnetConn          *tsnet.Server
 }
 
 // Initialize initializes the provider with the given configuration.
 func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.Empty, error) {
-	tmpDir := "/tmp"
-	if runtime.GOOS == "windows" {
-		tmpDir = os.TempDir()
-		if tmpDir == "" {
-			return nil, errors.New("could not determine temp dir")
-		}
-	}
-
 	p.BasePath = &req.BasePath
 	p.DaytonaDownloadUrl = &req.DaytonaDownloadUrl
 	p.DaytonaVersion = &req.DaytonaVersion
@@ -59,7 +49,6 @@ func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.
 	p.ApiPort = &req.ApiPort
 	p.ServerPort = &req.ServerPort
 	p.LogsDir = &req.LogsDir
-	p.LocalSockDir = path.Join(tmpDir, "fly-socks")
 
 	return new(util.Empty), nil
 }
@@ -184,7 +173,7 @@ func (p *FlyProvider) GetWorkspaceInfo(workspaceReq *provider.WorkspaceRequest) 
 		return nil, err
 	}
 
-	var projectInfos []*workspace.ProjectInfo
+	var projectInfos []*project.ProjectInfo
 	for _, project := range workspaceReq.Workspace.Projects {
 		projectInfo, err := p.GetProjectInfo(&provider.ProjectRequest{
 			TargetOptions: workspaceReq.TargetOptions,
@@ -299,7 +288,7 @@ func (p *FlyProvider) DestroyProject(projectReq *provider.ProjectRequest) (*util
 	return new(util.Empty), dockerClient.DestroyProject(projectReq.Project, p.getProjectDir(projectReq), sshClient)
 }
 
-func (p *FlyProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*workspace.ProjectInfo, error) {
+func (p *FlyProvider) GetProjectInfo(projectReq *provider.ProjectRequest) (*project.ProjectInfo, error) {
 	logWriter, cleanupFunc := p.getProjectLogWriter(projectReq.Project.WorkspaceId, projectReq.Project.Name)
 	defer cleanupFunc()
 
