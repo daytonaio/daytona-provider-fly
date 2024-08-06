@@ -2,9 +2,7 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -13,7 +11,6 @@ import (
 	"github.com/daytonaio/daytona/pkg/tailscale"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	"tailscale.com/tsnet"
 )
 
@@ -63,39 +60,8 @@ func (p *FlyProvider) getDockerClient(workspaceId string) (docker.IDockerClient,
 		return nil, err
 	}
 
-	localSockPath := filepath.Join(p.LocalSockDir, workspaceId, "docker-forward.sock")
-
-	if _, err := os.Stat(filepath.Dir(localSockPath)); err != nil {
-		err := os.MkdirAll(filepath.Dir(localSockPath), 0755)
-		if err != nil {
-			return nil, err
-		}
-
-		startedChan, errChan := tailscale.ForwardRemoteUnixSock(tailscale.ForwardConfig{
-			Ctx:        context.Background(),
-			TsnetConn:  tsnetConn,
-			Hostname:   workspaceId,
-			SshPort:    config.SSH_PORT,
-			LocalSock:  localSockPath,
-			RemoteSock: "/var/run/docker.sock",
-		})
-
-		go func() {
-			err := <-errChan
-			if err != nil {
-				log.Error(err)
-				startedChan <- false
-				_ = os.Remove(localSockPath)
-			}
-		}()
-
-		started := <-startedChan
-		if !started {
-			return nil, errors.New("failed to start SSH tunnel")
-		}
-	}
-
-	cli, err := client.NewClientWithOpts(client.WithHost(fmt.Sprintf("unix://%s", localSockPath)), client.WithAPIVersionNegotiation())
+	remoteHost := fmt.Sprintf("tcp://%s:2375", workspaceId)
+	cli, err := client.NewClientWithOpts(client.WithDialContext(tsnetConn.Dial), client.WithHost(remoteHost), client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
