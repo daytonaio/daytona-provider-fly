@@ -21,6 +21,7 @@ func GetTargetManifest() *provider.ProviderTargetManifest {
 		"Region": provider.ProviderTargetProperty{
 			Type:        provider.ProviderTargetPropertyTypeString,
 			Description: "The region where the fly machine resides. If not specified, near region will be used.",
+			Suggestions: regions,
 		},
 		"Size": provider.ProviderTargetProperty{
 			Type:         provider.ProviderTargetPropertyTypeString,
