@@ -55,7 +55,10 @@ func (p *FlyProvider) Initialize(req provider.InitializeProviderRequest) (*util.
 
 // GetInfo returns the provider information.
 func (p *FlyProvider) GetInfo() (provider.ProviderInfo, error) {
+	label := "Fly.io"
+
 	return provider.ProviderInfo{
+		Label:   &label,
 		Name:    "fly-provider",
 		Version: internal.Version,
 	}, nil
