@@ -7,7 +7,6 @@
 
 </div>
 
-
 <h1 align="center">Daytona Fly Provider</h1>
 <div align="center">
 This repository is the home of the <a href="https://github.com/daytonaio/daytona">Daytona</a> Fly Provider.
@@ -28,17 +27,17 @@ The Fly Provider allows Daytona to create workspace projects on Fly VMs known as
 
 ## Target Options
 
-| Property             | Type     	    | Optional 	  | DefaultValue  | InputMasked 	   | DisabledPredicate 	 |
-|----------------------|---------------|-------------|---------------|-----------------|---------------------|
-| AuthToken       	    | String   	    | false    	  | 	             | true       	    | 	                   |
-| OrgSlug              | String   	    | false     	 | 	             | false         	 | 	                   |
-| Region             	 | String      	 | true     	  | 	             | false       	   | 	                   |
-| DiskSize             | String 	      | true     	  | 10            | false       	   |                     |
-| Size              	  | String 	      | true     	  | shared-cpu-4x | false       	   |                     |
+| Property  | Type   | Optional | DefaultValue  | InputMasked | DisabledPredicate |
+| --------- | ------ | -------- | ------------- | ----------- | ----------------- |
+| AuthToken | String | false    |               | true        |                   |
+| OrgSlug   | String | false    |               | false       |                   |
+| Region    | String | true     |               | false       |                   |
+| DiskSize  | String | true     | 10            | false       |                   |
+| Size      | String | true     | shared-cpu-4x | false       |                   |
 
-### Default Targets
+### Preset Targets
 
-The Fly Provider has no default targets. Before using the provider you must set the target using the `daytona target set` command.
+The Fly Provider has no preset targets. Before using the provider you must set the target using the `daytona target set` command.
 
 ## Code of Conduct
 
@@ -59,4 +58,3 @@ Afterwards, navigate to the [contributing guide](CONTRIBUTING.md) to get started
 
 For more information on how to use and develop Daytona, talk to us on
 [Slack](https://join.slack.com/t/daytonacommunity/shared_invite/zt-273yohksh-Q5YSB5V7tnQzX2RoTARr7Q).
-

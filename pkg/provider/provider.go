@@ -68,7 +68,7 @@ func (p *FlyProvider) GetTargetManifest() (*provider.ProviderTargetManifest, err
 	return types.GetTargetManifest(), nil
 }
 
-func (p *FlyProvider) GetDefaultTargets() (*[]provider.ProviderTarget, error) {
+func (p *FlyProvider) GetPresetTargets() (*[]provider.ProviderTarget, error) {
 	return new([]provider.ProviderTarget), nil
 }
 
