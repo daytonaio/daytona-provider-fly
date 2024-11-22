@@ -380,3 +380,8 @@ func (p *FlyProvider) getProjectDir(projectReq *provider.ProjectRequest) string 
 		fmt.Sprintf("%s-%s", projectReq.Project.WorkspaceId, projectReq.Project.Name),
 	)
 }
+
+func (a *FlyProvider) CheckRequirements() (*[]provider.RequirementStatus, error) {
+	results := []provider.RequirementStatus{}
+	return &results, nil 
+}
