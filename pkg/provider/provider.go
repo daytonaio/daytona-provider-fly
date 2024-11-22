@@ -213,12 +213,14 @@ func (p *FlyProvider) CreateProject(projectReq *provider.ProjectRequest) (*util.
 	defer sshClient.Close()
 
 	return new(util.Empty), dockerClient.CreateProject(&docker.CreateProjectOptions{
-		Project:    projectReq.Project,
-		ProjectDir: p.getProjectDir(projectReq),
-		Cr:         projectReq.ContainerRegistry,
-		LogWriter:  logWriter,
-		Gpc:        projectReq.GitProviderConfig,
-		SshClient:  sshClient,
+		Project:                  projectReq.Project,
+		ProjectDir:               p.getProjectDir(projectReq),
+		ContainerRegistry:        projectReq.ContainerRegistry,
+		BuilderImage:             projectReq.BuilderImage,
+		BuilderContainerRegistry: projectReq.BuilderContainerRegistry,
+		LogWriter:                logWriter,
+		Gpc:                      projectReq.GitProviderConfig,
+		SshClient:                sshClient,
 	})
 }
 
@@ -246,12 +248,14 @@ func (p *FlyProvider) StartProject(projectReq *provider.ProjectRequest) (*util.E
 	defer sshClient.Close()
 
 	return new(util.Empty), dockerClient.StartProject(&docker.CreateProjectOptions{
-		Project:    projectReq.Project,
-		ProjectDir: p.getProjectDir(projectReq),
-		Cr:         projectReq.ContainerRegistry,
-		LogWriter:  logWriter,
-		Gpc:        projectReq.GitProviderConfig,
-		SshClient:  sshClient,
+		Project:                  projectReq.Project,
+		ProjectDir:               p.getProjectDir(projectReq),
+		ContainerRegistry:        projectReq.ContainerRegistry,
+		BuilderImage:             projectReq.BuilderImage,
+		BuilderContainerRegistry: projectReq.BuilderContainerRegistry,
+		LogWriter:                logWriter,
+		Gpc:                      projectReq.GitProviderConfig,
+		SshClient:                sshClient,
 	}, *p.DaytonaDownloadUrl)
 }
 

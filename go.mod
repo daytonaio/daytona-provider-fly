@@ -6,7 +6,7 @@ go 1.23.0
 replace github.com/docker/go-connections => github.com/docker/go-connections v0.4.0
 
 require (
-	github.com/daytonaio/daytona v0.44.1
+	github.com/daytonaio/daytona v0.46.0
 	github.com/docker/docker v27.2.0+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-hclog v1.6.3
