@@ -741,10 +741,8 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davidmz/go-pageant v1.0.2 h1:bPblRCh5jGU+Uptpz6LgMZGD5hJoOt7otgT454WvHn0=
 github.com/davidmz/go-pageant v1.0.2/go.mod h1:P2EDDnMqIwG5Rrp05dTRITj9z2zpGcD9efWSkTNKLIE=
-github.com/daytonaio/daytona v0.46.0 h1:sR6uolEABmPvKjgfeZqet1syU1p7S5pvBoOLtbXODtI=
-github.com/daytonaio/daytona v0.46.0/go.mod h1:MIhlJ/RVENh/Zfz0rGrQRYhkSMFzw6I/WIwZbuEilIs=
-github.com/daytonaio/daytona v0.46.1-0.20241125103042-be44f1dfecce h1:1rY6aCTb+2uSF/mgbzDQ48D4oZRw2hiLhMFRgoMlatI=
-github.com/daytonaio/daytona v0.46.1-0.20241125103042-be44f1dfecce/go.mod h1:MIhlJ/RVENh/Zfz0rGrQRYhkSMFzw6I/WIwZbuEilIs=
+github.com/daytonaio/daytona v0.46.1 h1:Bnuu+3ZhtWfkVN2zH/wFORWciFX1+yBoSK5WelFVIhk=
+github.com/daytonaio/daytona v0.46.1/go.mod h1:MIhlJ/RVENh/Zfz0rGrQRYhkSMFzw6I/WIwZbuEilIs=
 github.com/dblohm7/wingoes v0.0.0-20240123200102-b75a8a7d7eb0 h1:vrC07UZcgPzu/OjWsmQKMGg3LoPSz9jh/pQXIrHjUj4=
 github.com/dblohm7/wingoes v0.0.0-20240123200102-b75a8a7d7eb0/go.mod h1:Nx87SkVqTKd8UtT+xu7sM/l+LgXs6c0aHrlKusR+2EQ=
 github.com/digitalocean/go-smbios v0.0.0-20180907143718-390a4f403a8e h1:vUmf0yezR0y7jJ5pceLHthLaYf4bA5T14B6q39S4q2Q=
