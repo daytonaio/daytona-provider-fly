@@ -10,16 +10,16 @@ import (
 
 	"github.com/daytonaio/daytona-provider-fly/internal"
 	"github.com/daytonaio/daytona-provider-fly/pkg/types"
-	"github.com/daytonaio/daytona/pkg/workspace"
+	"github.com/daytonaio/daytona/pkg/models"
 	log "github.com/sirupsen/logrus"
 	"github.com/superfly/fly-go"
 	"github.com/superfly/fly-go/flaps"
 	"github.com/superfly/fly-go/tokens"
 )
 
-// CreateWorkspace creates a new fly.io app for the provided workspace.
-func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, initScript string) (*fly.Machine, error) {
-	appName := getResourceName(workspace.Id)
+// Createtarget creates a new fly.io app for the provided target.
+func CreateTarget(target *models.Target, opts *types.TargetOptions, initScript string) (*fly.Machine, error) {
+	appName := getResourceName(target.Id)
 	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, 
 		return nil, err
 	}
 
-	machine, err := createMachine(workspace, opts, initScript)
+	machine, err := createMachine(target, opts, initScript)
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,9 @@ func CreateWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions, 
 	return machine, nil
 }
 
-// StartWorkspace starts the machine for the provided workspace.
-func StartWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
-	appName := getResourceName(workspace.Id)
+// Starttarget starts the machine for the provided target.
+func StartTarget(target *models.Target, opts *types.TargetOptions) error {
+	appName := getResourceName(target.Id)
 	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func StartWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) e
 		return fmt.Errorf("there was an issue waiting for the app: %w", err)
 	}
 
-	machineName := getResourceName(workspace.Id)
+	machineName := getResourceName(target.Id)
 	machine, err := findMachine(flapsClient, machineName)
 	if err != nil {
 		return err
@@ -78,15 +78,15 @@ func StartWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) e
 	return nil
 }
 
-// StopWorkspace stops the machine for the provided workspace.
-func StopWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
-	appName := getResourceName(workspace.Id)
+// Stoptarget stops the machine for the provided target.
+func StopTarget(target *models.Target, opts *types.TargetOptions) error {
+	appName := getResourceName(target.Id)
 	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return err
 	}
 
-	machineName := getResourceName(workspace.Id)
+	machineName := getResourceName(target.Id)
 	machine, err := findMachine(flapsClient, machineName)
 	if err != nil {
 		return err
@@ -95,9 +95,9 @@ func StopWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) er
 	return flapsClient.Stop(context.Background(), fly.StopMachineInput{ID: machine.ID}, "")
 }
 
-// DeleteWorkspace deletes the app associated with the provided workspace.
-func DeleteWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) error {
-	appName := getResourceName(workspace.Id)
+// Deletetarget deletes the app associated with the provided target.
+func DeleteTarget(target *models.Target, opts *types.TargetOptions) error {
+	appName := getResourceName(target.Id)
 	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return err
@@ -123,16 +123,16 @@ func DeleteWorkspace(workspace *workspace.Workspace, opts *types.TargetOptions) 
 	return nil
 }
 
-// createMachine creates a new machine for the provided workspace.
-func createMachine(workspace *workspace.Workspace, opts *types.TargetOptions, initScript string) (*fly.Machine, error) {
-	appName := getResourceName(workspace.Id)
+// createMachine creates a new machine for the provided target.
+func createMachine(target *models.Target, opts *types.TargetOptions, initScript string) (*fly.Machine, error) {
+	appName := getResourceName(target.Id)
 	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return nil, err
 	}
 
 	volume, err := flapsClient.CreateVolume(context.Background(), fly.CreateVolumeRequest{
-		Name:   getVolumeName(workspace.Id),
+		Name:   getVolumeName(target.Id),
 		SizeGb: &opts.DiskSize,
 		Region: opts.Region,
 	})
@@ -157,16 +157,16 @@ adduser -D -G docker daytona
 %s
 
 # Switch to daytona user and run Daytona agent
-su daytona -c "daytona agent --host"
+su daytona -c "daytona agent --target"
 `, initScript)
 
-	envVars := workspace.EnvVars
+	envVars := target.EnvVars
 	// Disable running docker with TLS
 	envVars["DOCKER_TLS_VERIFY"] = ""
 	envVars["DOCKER_TLS_CERTDIR"] = ""
 
 	return flapsClient.Launch(context.Background(), fly.LaunchMachineInput{
-		Name: getResourceName(workspace.Id),
+		Name: getResourceName(target.Id),
 		Config: &fly.MachineConfig{
 			VMSize: opts.Size,
 			Image:  "docker:dind",
@@ -187,21 +187,21 @@ su daytona -c "daytona agent --host"
 	})
 }
 
-// GetMachine returns the machine for the provided workspace.
-func GetMachine(workspace *workspace.Workspace, opts *types.TargetOptions) (*fly.Machine, error) {
-	appName := getResourceName(workspace.Id)
+// GetMachine returns the machine for the provided target.
+func GetMachine(target *models.Target, opts *types.TargetOptions) (*fly.Machine, error) {
+	appName := getResourceName(target.Id)
 	flapsClient, err := createFlapsClient(appName, opts.AuthToken)
 	if err != nil {
 		return nil, err
 	}
 
-	machineName := getResourceName(workspace.Id)
+	machineName := getResourceName(target.Id)
 	return findMachine(flapsClient, machineName)
 }
 
-// GetWorkspaceLogs fetches app logs for a specified workspace machine and writes the fetched log entries to the logger.
-func GetWorkspaceLogs(workspace *workspace.Workspace, opts *types.TargetOptions, machineId string, logger io.Writer) error {
-	appName := getResourceName(workspace.Id)
+// GettargetLogs fetches app logs for a specified target machine and writes the fetched log entries to the logger.
+func GetTargetLogs(target *models.Target, opts *types.TargetOptions, machineId string, logger io.Writer) error {
+	appName := getResourceName(target.Id)
 
 	fly.SetBaseURL("https://api.fly.io")
 	client := fly.NewClientFromOptions(fly.ClientOptions{
@@ -245,12 +245,12 @@ func findMachine(flapsClient *flaps.Client, machineName string) (*fly.Machine, e
 	return nil, fmt.Errorf("machine %s not found", machineName)
 }
 
-// getResourceName generates a machine name for the provided workspace.
+// getResourceName generates a machine name for the provided target.
 func getResourceName(identifier string) string {
 	return fmt.Sprintf("daytona-%s", identifier)
 }
 
-// getVolumeName generates a volume name for the provided workspace.
+// getVolumeName generates a volume name for the provided target.
 func getVolumeName(name string) string {
 	name = fmt.Sprintf("daytona_%s", name)
 	regex := regexp.MustCompile(`[^a-zA-Z0-9_]`)

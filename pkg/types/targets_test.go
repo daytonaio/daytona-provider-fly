@@ -4,16 +4,16 @@ import (
 	"testing"
 )
 
-func TestGetTargetManifest(t *testing.T) {
-	targetManifest := GetTargetManifest()
-	if targetManifest == nil {
-		t.Fatalf("Expected target manifest but got nil")
+func TestGetTargetConfigManifest(t *testing.T) {
+	targetConfigManifest := GetTargetConfigManifest()
+	if targetConfigManifest == nil {
+		t.Fatalf("Expected target config manifest but got nil")
 	}
 
 	fields := [5]string{"Region", "Size", "Disk Size", "Org Slug", "Auth Token"}
 	for _, field := range fields {
-		if _, ok := (*targetManifest)[field]; !ok {
-			t.Errorf("Expected field %s in target manifest but it was not found", field)
+		if _, ok := (*targetConfigManifest)[field]; !ok {
+			t.Errorf("Expected field %s in target config manifest but it was not found", field)
 		}
 	}
 }
