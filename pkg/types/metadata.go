@@ -1,6 +1,6 @@
 package types
 
-type WorkspaceMetadata struct {
+type TargetMetadata struct {
 	MachineId string
 	VolumeId  string
 	IsRunning bool

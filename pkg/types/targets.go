@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/daytonaio/daytona/pkg/provider"
+	"github.com/daytonaio/daytona/pkg/models"
 )
 
 type TargetOptions struct {
@@ -16,30 +16,30 @@ type TargetOptions struct {
 	AuthToken string `json:"Auth Token,omitempty"`
 }
 
-func GetTargetManifest() *provider.ProviderTargetManifest {
-	return &provider.ProviderTargetManifest{
-		"Region": provider.ProviderTargetProperty{
-			Type:        provider.ProviderTargetPropertyTypeString,
+func GetTargetConfigManifest() *models.TargetConfigManifest {
+	return &models.TargetConfigManifest{
+		"Region": models.TargetConfigProperty{
+			Type:        models.TargetConfigPropertyTypeString,
 			Description: "The region where the fly machine resides. If not specified, near region will be used.",
 			Suggestions: regions,
 		},
-		"Size": provider.ProviderTargetProperty{
-			Type:         provider.ProviderTargetPropertyTypeString,
+		"Size": models.TargetConfigProperty{
+			Type:         models.TargetConfigPropertyTypeString,
 			DefaultValue: "shared-cpu-4x",
 			Description: "The size of the fly machine. Default is shared-cpu-4x. List of available sizes " +
 				"https://fly.io/docs/about/pricing/#started-fly-machines",
 		},
-		"Disk Size": provider.ProviderTargetProperty{
-			Type:         provider.ProviderTargetPropertyTypeInt,
+		"Disk Size": models.TargetConfigProperty{
+			Type:         models.TargetConfigPropertyTypeInt,
 			DefaultValue: "10",
 			Description:  "The size of the disk in GB.",
 		},
-		"Org Slug": provider.ProviderTargetProperty{
-			Type:        provider.ProviderTargetPropertyTypeString,
+		"Org Slug": models.TargetConfigProperty{
+			Type:        models.TargetConfigPropertyTypeString,
 			Description: "The organization name to create the fly machine in.",
 		},
-		"Auth Token": provider.ProviderTargetProperty{
-			Type:        provider.ProviderTargetPropertyTypeString,
+		"Auth Token": models.TargetConfigProperty{
+			Type:        models.TargetConfigPropertyTypeString,
 			InputMasked: true,
 			Description: "If empty, token will be fetched from the FLY_ACCESS_TOKEN environment variable.",
 		},
